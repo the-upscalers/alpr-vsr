@@ -2,8 +2,7 @@ import { useRef, useState } from "react";
 import AnnotationTools from "./components/AnnotationTools";
 import Settings from "./components/Settings";
 import Tools from "./components/Tools";
-import { CiSettings } from "react-icons/ci";
-import { FileUp } from "lucide-react";
+import { FileUp, Settings as SettingsIcon } from "lucide-react";
 import { TwoDVideoAnnotation } from "react-video-annotation-tool";
 
 const videoControls = {
@@ -40,6 +39,8 @@ function App() {
 	const triggerFileUpload = () => {
 		fileInputRef.current?.click();
 	};
+
+	console.log(annotationData);
 
 	return (
 		<div className="w-screen h-screen bg-stone-900 overflow-hidden flex flex-col">
@@ -98,7 +99,7 @@ function App() {
 								showSettings ? "bg-blue-600" : "bg-stone-700"
 							} hover:bg-blue-600 p-1 rounded-full transition`}
 						>
-							<CiSettings size={20} />
+							<SettingsIcon className="w-4 h-4" />
 						</button>
 					</div>
 					{showSettings ? (
