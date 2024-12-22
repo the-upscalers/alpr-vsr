@@ -68,6 +68,7 @@ class Tracker:
         )
         self.target_track_id = None
         self.target_initialized = False
+        self.best_iou_threshold = 0.3
 
     def initialize_target(self, target_box, detections, frame):
         """Initialize tracking for the target license plate"""
@@ -88,7 +89,7 @@ class Tracker:
                 best_detection = detection
 
         print(f"Best IoU: {best_iou}")
-        if best_iou > 0.3:  # If we found a good match
+        if best_iou > self.best_iou_threshold:  # If we found a good match
             # Update tracks with only this detection
             tracks = self.object_tracker.update_tracks([best_detection], frame=frame)
             for track in tracks:
@@ -169,6 +170,7 @@ def main():
     MODEL_PATH = "models/YOLOv11.pt"
     VIDEO_PATH = "videos/parked-cars.mp4"
     OUTPUT_PATH = "output/tracked_video.mp4"
+    CROPPED_OUTPUT_PATH = "output/cropped_number_plate.mp4"
 
     detector = YoloDetector(model_path=MODEL_PATH, confidence=0.4)
     tracker = Tracker()
@@ -182,10 +184,6 @@ def main():
     cv2.setMouseCallback(window_name, box_drawer.mouse_callback)
 
     # Selection phase
-    print("Draw a box around the license plate you want to track.")
-    print("Use 'a' to move backward, 'd' to move forward, 'p' to play/pause, and 'q' to quit.")
-    print("Press SPACE when satisfied with the selection.")
-
     ret, frame = cap.read()
     if not ret:
         print("Failed to read video")
@@ -207,6 +205,20 @@ def main():
 
         display_frame = selection_frame.copy()
         box_drawer.draw_current_box(display_frame)
+
+        # Add instructions to the display frame
+        instructions = [
+            "Instructions:",
+            "1. Draw a box around the license plate you want to track.",
+            "2. Use 'A' to move backward, 'D' to move forward.",
+            "3. Press 'P' to play/pause.",
+            "4. Press SPACE when satisfied with the selection.",
+            "5. Press 'Q' to quit."
+        ]
+        y_offset = 20
+        for instruction in instructions:
+            cv2.putText(display_frame, instruction, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            y_offset += 30
 
         cv2.imshow(window_name, display_frame)
         key = cv2.waitKey(30) & 0xFF
@@ -232,14 +244,20 @@ def main():
             if ret:
                 selection_frame = frame.copy()
 
-    # Tracking phase
+     # Tracking phase
     cv2.destroyWindow(window_name)
+
+    # Raise an error if the user did not select a target box
+    if target_box is None:
+        raise ValueError("No target box selected. Exiting...")
 
     # Output video writer setup
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(OUTPUT_PATH, fourcc, cap.get(cv2.CAP_PROP_FPS),
                           (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+    cropped_out = cv2.VideoWriter(CROPPED_OUTPUT_PATH, fourcc, cap.get(cv2.CAP_PROP_FPS),
+                                   (target_box[2] - target_box[0], target_box[3] - target_box[1]))
 
     # Reset video to start
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -263,6 +281,14 @@ def main():
             tracking_id, box = tracker.track(detections, frame)
             if box is not None:
                 x1, y1, x2, y2 = map(int, box)
+
+                # Crop the number plate and write it to the cropped video
+                cropped_plate = frame[y1:y2, x1:x2]
+                if cropped_plate.size > 0:  # Ensure the crop is valid
+                    resized_plate = cv2.resize(cropped_plate, 
+                                               (target_box[2] - target_box[0], target_box[3] - target_box[1]))
+                    cropped_out.write(resized_plate)
+
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(frame, f"Target ID: {tracking_id}", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
@@ -271,7 +297,9 @@ def main():
 
     cap.release()
     out.release()
+    cropped_out.release()
     print(f"Tracking completed. Output video saved to {OUTPUT_PATH}")
+    print(f"Cropped number plate video saved to {CROPPED_OUTPUT_PATH}")
 
 if __name__ == "__main__":
     main()
