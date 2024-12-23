@@ -50,7 +50,7 @@ class BoundingBoxDrawer:
                           (255, 0, 0), 2)
 
 class Tracker:
-    def __init__(self):
+    def __init__(self, iou_threshold=0.2):
         self.object_tracker = DeepSort(
             max_age=30,
             n_init=3,
@@ -68,7 +68,7 @@ class Tracker:
         )
         self.target_track_id = None
         self.target_initialized = False
-        self.best_iou_threshold = 0.3
+        self.iou_threshold = iou_threshold
 
     def initialize_target(self, target_box, detections, frame):
         """Initialize tracking for the target license plate"""
@@ -89,7 +89,7 @@ class Tracker:
                 best_detection = detection
 
         print(f"Best IoU: {best_iou}")
-        if best_iou > self.best_iou_threshold:  # If we found a good match
+        if best_iou > self.iou_threshold:  # If we found a good match
             # Update tracks with only this detection
             tracks = self.object_tracker.update_tracks([best_detection], frame=frame)
             for track in tracks:
@@ -173,7 +173,7 @@ def main():
     CROPPED_OUTPUT_PATH = "output/cropped_number_plate.mp4"
 
     detector = YoloDetector(model_path=MODEL_PATH, confidence=0.4)
-    tracker = Tracker()
+    tracker = Tracker(iou_threshold=0.2)
     box_drawer = BoundingBoxDrawer()
 
     cap = cv2.VideoCapture(VIDEO_PATH)
