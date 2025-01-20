@@ -397,16 +397,19 @@ class VideoPlayerWindow(QMainWindow):
     def tracking_finished(self):
         self.statusBar().showMessage("Tracking completed!")
         self.play_button.setEnabled(True)
+
+        # Close app after tracking is done
+        self.closeEvent()
         
     def closeEvent(self, event):
         # Make sure to stop the tracking thread when closing the window
         if hasattr(self, 'tracking_thread'):
             self.tracking_thread.stop()
             self.tracking_thread.wait()
-        super().closeEvent(event)
-
-    def closeEvent(self, event):
+        
+        # Release the capture
         self.cap.release()
+        
         super().closeEvent(event)
 
 def main():
