@@ -1,8 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from dotenv import load_dotenv
-from track import handle_video_tracking
+from track import handle_video_tracking, BoundingBox, YoloDetector
 import os
 import json
 
@@ -20,12 +18,6 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # Initialize detector
 detector = YoloDetector(model_path=MODEL_PATH, confidence=0.4)
 
-class BoundingBox(BaseModel):
-    x1: int
-    y1: int
-    x2: int
-    y2: int
-
 @app.post("/process-video")
 async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
     if not video.filename.endswith(('.mp4', '.avi', '.mov')):
@@ -41,7 +33,7 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid bbox data: {str(e)}")
     
-    return await handle_video_tracking(video, bbox, TEMP_DIR)
+    return await handle_video_tracking(video, bbox, detector, TEMP_DIR)
 
 if __name__ == "__main__":
     import uvicorn
