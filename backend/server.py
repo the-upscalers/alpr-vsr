@@ -1,5 +1,5 @@
 # server/main.py
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import numpy as np
@@ -8,12 +8,20 @@ import os
 from typing import List
 import tempfile
 from track import Tracker, YoloDetector
+import json
 
+from dotenv import load_dotenv
+import os
+
+# Loads variables from .env into the environment
+load_dotenv()
 app = FastAPI()
 
 # Configure paths
-MODEL_PATH = "models/YOLOv11.pt"
-TEMP_DIR = "temp"
+HOST = os.getenv("HOST")
+PORT = os.getenv("PORT")
+MODEL_PATH = os.getenv("MODEL_PATH")
+TEMP_DIR = os.getenv("TEMP_DIR")
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 # Initialize detector
@@ -26,9 +34,19 @@ class BoundingBox(BaseModel):
     y2: int
 
 @app.post("/process-video")
-async def process_video(video: UploadFile = File(...), bbox: BoundingBox = None):
+async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
     if not video.filename.endswith(('.mp4', '.avi', '.mov')):
         raise HTTPException(status_code=400, detail="Unsupported video format")
+
+    try:
+        # Parse the bbox JSON string to dict
+        bbox_data = json.loads(bbox)
+        # Validate bbox data
+        bbox = BoundingBox(**bbox_data)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid bbox JSON format")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid bbox data: {str(e)}")
     
     # Save uploaded video temporarily
     temp_input = os.path.join(TEMP_DIR, f"input_{video.filename}")
@@ -100,11 +118,12 @@ async def process_video(video: UploadFile = File(...), bbox: BoundingBox = None)
         raise HTTPException(status_code=500, detail=str(e))
     
     finally:
+        pass
         # Clean up temporary files
-        for temp_file in [temp_input, temp_output, temp_cropped]:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+        # for temp_file in [temp_input, temp_output, temp_cropped]:
+        #     if os.path.exists(temp_file):
+        #         os.remove(temp_file)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=HOST, port=PORT)

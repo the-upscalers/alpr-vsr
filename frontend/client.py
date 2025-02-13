@@ -45,6 +45,7 @@ class VideoUploadThread(QThread):
                 self.upload_complete.emit(str(output_path))
             else:
                 self.error_occurred.emit(f"Server error: {response.text}")
+                print(response.text)
                 
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")
