@@ -1,7 +1,82 @@
 from deep_sort_realtime.deepsort_tracker import DeepSort
 from ultralytics import YOLO
 import cv2
-import time
+
+async def handle_video_tracking(video: UploadFile, bbox: BoundingBox, TEMP_DIR: str):
+    # Save uploaded video temporarily
+    temp_input = os.path.join(TEMP_DIR, f"input_{video.filename}")
+    temp_output = os.path.join(TEMP_DIR, f"output_{video.filename}")
+    temp_cropped = os.path.join(TEMP_DIR, f"cropped_{video.filename}")
+
+    try:
+        with open(temp_input, 'wb') as f:
+            content = await video.read()
+            f.write(content)
+        
+        # Process video
+        tracker = Tracker(iou_threshold=0.2)
+        cap = cv2.VideoCapture(temp_input)
+        
+        # Setup video writers
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_output, fourcc, 
+                            cap.get(cv2.CAP_PROP_FPS),
+                            (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+        
+        cropped_out = cv2.VideoWriter(temp_cropped, fourcc, 
+                                    cap.get(cv2.CAP_PROP_FPS),
+                                    (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1))
+        
+        target_initialized = False
+        target_box = [bbox.x1, bbox.y1, bbox.x2, bbox.y2]
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            detections = detector.detect(frame)
+
+            if not target_initialized:
+                target_initialized = tracker.initialize_target(target_box, detections, frame)
+                if not target_initialized:
+                    continue
+
+            if target_initialized:
+                tracking_id, box = tracker.track(detections, frame)
+                if box is not None:
+                    x1, y1, x2, y2 = map(int, box)
+                    
+                    # Crop the plate region
+                    cropped_plate = frame[y1:y2, x1:x2]
+                    if cropped_plate.size > 0:
+                        resized_plate = cv2.resize(cropped_plate, 
+                                                (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1))
+                        cropped_out.write(resized_plate)
+
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            out.write(frame)
+
+        # Clean up
+        cap.release()
+        out.release()
+        cropped_out.release()
+
+        # Return the cropped video
+        return FileResponse(temp_cropped, 
+                            media_type="video/mp4", 
+                            filename=f"cropped_{video.filename}")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    finally:
+        # Clean up temporary files
+        for temp_file in [temp_input, temp_output]:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
 class BoundingBoxDrawer:
     def __init__(self):
@@ -165,141 +240,3 @@ class YoloDetector:
             conf = box.conf[0]
             detections.append((([x1, y1, w, h]), class_number, conf))
         return detections
-
-def main():
-    MODEL_PATH = "models/YOLOv11.pt"
-    VIDEO_PATH = "videos/parked-cars.mp4"
-    OUTPUT_PATH = "output/tracked_video.mp4"
-    CROPPED_OUTPUT_PATH = "output/cropped_number_plate.mp4"
-
-    detector = YoloDetector(model_path=MODEL_PATH, confidence=0.4)
-    tracker = Tracker(iou_threshold=0.2)
-    box_drawer = BoundingBoxDrawer()
-
-    cap = cv2.VideoCapture(VIDEO_PATH)
-
-    # Create window and set mouse callback
-    window_name = "Select License Plate"
-    cv2.namedWindow(window_name)
-    cv2.setMouseCallback(window_name, box_drawer.mouse_callback)
-
-    # Selection phase
-    ret, frame = cap.read()
-    if not ret:
-        print("Failed to read video")
-        return
-
-    selection_frame = frame.copy()
-    target_box = None
-    paused = True
-    current_frame = 0
-
-    while True:
-        if not paused:
-            ret, frame = cap.read()
-            if not ret:
-                print("Reached end of video.")
-                break
-            selection_frame = frame.copy()
-            current_frame += 1
-
-        display_frame = selection_frame.copy()
-        box_drawer.draw_current_box(display_frame)
-
-        # Add instructions to the display frame
-        instructions = [
-            "Instructions:",
-            "1. Draw a box around the license plate you want to track.",
-            "2. Use 'A' to move backward, 'D' to move forward.",
-            "3. Press 'P' to play/pause.",
-            "4. Press SPACE when satisfied with the selection.",
-            "5. Press 'Q' to quit."
-        ]
-        y_offset = 20
-        for instruction in instructions:
-            cv2.putText(display_frame, instruction, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            y_offset += 30
-
-        cv2.imshow(window_name, display_frame)
-        key = cv2.waitKey(30) & 0xFF
-
-        if key == ord('q'):
-            return
-        elif key == ord(' '):
-            if box_drawer.box_drawn:
-                target_box = box_drawer.get_box()
-                break
-        elif key == ord('p'):
-            paused = not paused
-        elif key == ord('a'):
-            current_frame = max(0, current_frame - 1)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
-            ret, frame = cap.read()
-            if ret:
-                selection_frame = frame.copy()
-        elif key == ord('d'):
-            current_frame += 1
-            cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
-            ret, frame = cap.read()
-            if ret:
-                selection_frame = frame.copy()
-
-     # Tracking phase
-    cv2.destroyWindow(window_name)
-
-    # Raise an error if the user did not select a target box
-    if target_box is None:
-        raise ValueError("No target box selected. Exiting...")
-
-    # Output video writer setup
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(OUTPUT_PATH, fourcc, cap.get(cv2.CAP_PROP_FPS),
-                          (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                           int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
-    cropped_out = cv2.VideoWriter(CROPPED_OUTPUT_PATH, fourcc, cap.get(cv2.CAP_PROP_FPS),
-                                   (target_box[2] - target_box[0], target_box[3] - target_box[1]))
-
-    # Reset video to start
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    target_initialized = False
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        detections = detector.detect(frame)
-
-        if not target_initialized:
-            target_initialized = tracker.initialize_target(target_box, detections, frame)
-            if not target_initialized:
-                print("Waiting for target initialization...")
-                out.write(frame)
-                continue
-
-        if target_initialized:
-            tracking_id, box = tracker.track(detections, frame)
-            if box is not None:
-                x1, y1, x2, y2 = map(int, box)
-
-                # Crop the number plate and write it to the cropped video
-                cropped_plate = frame[y1:y2, x1:x2]
-                if cropped_plate.size > 0:  # Ensure the crop is valid
-                    resized_plate = cv2.resize(cropped_plate, 
-                                               (target_box[2] - target_box[0], target_box[3] - target_box[1]))
-                    cropped_out.write(resized_plate)
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, f"Target ID: {tracking_id}", (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-        out.write(frame)
-
-    cap.release()
-    out.release()
-    cropped_out.release()
-    print(f"Tracking completed. Output video saved to {OUTPUT_PATH}")
-    print(f"Cropped number plate video saved to {CROPPED_OUTPUT_PATH}")
-
-if __name__ == "__main__":
-    main()
