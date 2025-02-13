@@ -4,3 +4,4 @@ data
 jupyter_events
 experiments
 .ipynb_checkpoints
+finetune
