@@ -4,7 +4,7 @@ import redis
 import os
 from dotenv import load_dotenv
 
-from track import BoundingBox, YoloDetector, handle_video_tracking
+from track import BoundingBox, YoloDetector
 
 load_dotenv()
 
@@ -37,7 +37,7 @@ def track_and_crop(self, input_path: str, bbox: BoundingBox):
 
     try:
         with open(input_path, "wb") as f:
-            content = await video.read()
+            content = video.read()
             f.write(content)
 
         # Process video
