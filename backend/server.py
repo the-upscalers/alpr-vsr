@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from celery_worker import track_and_crop, upscale_video, perform_ocr
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
+from celery import chain
 
 # Loads variables from .env into the environment
 load_dotenv()
@@ -27,15 +28,6 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
     # Validate video format
     if not video.filename.endswith((".mp4")):
         raise HTTPException(status_code=400, detail="Unsupported video format")
-
-    # Parse bounding box data
-    try:
-        bbox_data = json.loads(bbox)
-        bbox = BoundingBox(**bbox_data)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid bbox JSON format")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid bbox data: {str(e)}")
 
     task_id = str(uuid.uuid4())  # Generate unique task ID
 
@@ -72,7 +64,7 @@ async def get_task_status(task_id: str):
         return {"task_id": task_id, "status": task.state, "progress": task.info}
 
     if task.state == "SUCCESS":
-        return {"task_id": task_id, "status": "Completed", "output": task.result}
+        return {"task_id": task_id, "status": "SUCCESS", "output": task.result}
 
     return {"task_id": task_id, "status": task.state}
 
