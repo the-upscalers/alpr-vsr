@@ -1,0 +1,37 @@
+services:
+  fastapi_app:
+    build: .
+    container_name: fastapi_app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - celery_worker
+    environment:
+      - CELERY_BROKER_URL=pyamqp://guest@rabbitmq//
+      - CELERY_RESULT_BACKEND=rpc://
+      - HOST=0.0.0.0
+      - PORT=8000
+      - TEMP_DIR=temp
+
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # AMQP (Celery <-> RabbitMQ)
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  celery_worker:
+    build: .
+    container_name: celery_worker
+    command: celery -A tasks worker --loglevel=info
+    depends_on:
+      - rabbitmq
+    environment:
+      - CELERY_BROKER_URL=pyamqp://guest@rabbitmq//
+      - CELERY_RESULT_BACKEND=rpc://
+      - MODEL_PATH=models/YOLOv11.pt
+      - TEMP_DIR=temp

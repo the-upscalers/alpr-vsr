@@ -1,0 +1,6 @@
+.git
+.venv
+bin
+finetune
+temp
+__pycache__
