@@ -71,6 +71,7 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
         task_metadata[task_id] = {
             "chain_id": result.id,
             "input_path": input_path,
+            "task_ids": [result.parent.parent.id, result.parent.id, result.id],
             "task_sequence": ["track_and_crop", "upscale_video", "perform_ocr"],
             "current_task_index": 0,
         }
@@ -92,60 +93,47 @@ async def get_task_status(task_id: str):
         return {"error": "Invalid task ID"}
 
     metadata = task_metadata[task_id]
-    chain_id = metadata["chain_id"]
-    logger.debug(f"Found chain_id: {chain_id}")
+    task_ids = [tid for tid in metadata.get("task_ids", []) if tid]
+    task_sequence = metadata.get("task_sequence", [])
 
-    # Now celery is defined, so we can use it
-    chain_result = AsyncResult(chain_id, app=celery)
-    logger.debug(f"Chain state: {chain_result.state}")
-    logger.debug(f"Chain info: {chain_result.info}")
+    task_states = {}
+    total_progress = 0
+    num_tasks = len(task_ids)
 
-    # Traverse back through parent tasks
-    current_task = chain_result
-    while current_task and current_task.parent:
-        current_task = current_task.parent
-    logger.debug(f"Current task state: {current_task.state}")
-    logger.debug(f"Current task info: {current_task.info}")
+    if num_tasks == 0:
+        return {"error": "No tasks found for this task ID"}
 
-    # Ensure meta info is a dictionary
-    result_meta = current_task.info or {}
+    for idx, task_id in enumerate(task_ids):
+        task_result = AsyncResult(task_id, app=celery)
+        task_states[task_sequence[idx]] = task_result.state
 
-    # Handle "PROGRESS" state
-    if isinstance(result_meta, dict) and "step" in result_meta:
-        response = {
-            "task_id": task_id,
-            "status": "PROGRESS",
-            "current_task": result_meta.get("step", "Unknown"),
-            "progress": result_meta.get("progress", 0),
-        }
-        logger.debug(f"Returning progress response: {response}")
-        return response
+        if task_result.state == "SUCCESS":
+            total_progress += 100 / num_tasks
+        elif task_result.state == "PROGRESS":
+            step_progress = (
+                task_result.info.get("progress", 0)
+                if isinstance(task_result.info, dict)
+                else 0
+            )
+            total_progress += step_progress / num_tasks
+        elif task_result.state == "FAILURE":
+            return {
+                "task_id": task_id,
+                "status": "FAILURE",
+                "error": str(task_result.result),
+                "task_states": task_states,
+            }
 
-    # Handle different states
-    if chain_result.state == "PENDING":
-        response = {
-            "task_id": task_id,
-            "status": "PENDING",
-            "message": "Task is pending execution",
-        }
-        logger.debug(f"Returning pending response: {response}")
-        return response
+    progress = int(total_progress)
+    logger.debug(f"Task progress: {progress}%")
 
-    if chain_result.state == "FAILURE":
-        error_msg = str(chain_result.result)
-        logger.error(f"Task failed: {error_msg}")
-        return {"task_id": task_id, "status": "FAILURE", "error": error_msg}
-
-    if chain_result.state == "SUCCESS":
-        final_result = chain_result.get()
-        task_metadata[task_id]["output_path"] = final_result
-        response = {"task_id": task_id, "status": "SUCCESS", "output": final_result}
-        logger.debug(f"Returning success response: {response}")
-        return response
-
-    # Default fallback
-    response = {"task_id": task_id, "status": chain_result.state}
-    logger.debug(f"Returning default response: {response}")
+    response = {
+        "task_id": task_id,
+        "progress": progress,
+        "task_states": task_states,
+        "status": "PROGRESS" if progress < 100 else "SUCCESS",
+    }
+    logger.debug(f"Returning task status response: {response}")
     return response
 
 

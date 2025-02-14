@@ -11,6 +11,8 @@ load_dotenv()
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@rabbitmq//")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "rpc://")
 
+PROGRESS_STATE = "PROGRESS"
+
 # Configure Celery and Redis
 celery = Celery("tasks", broker=CELERY_BROKER_URL, backend=CELERY_RESULT_BACKEND)
 celery.conf.update(
@@ -116,7 +118,7 @@ def track_and_crop(self, input_path: str, bbox: str):
             # Update progress every 10 frames or so
             if processed_frames % 10 == 0:
                 self.update_state(
-                    state="PROGRESS",
+                    state=PROGRESS_STATE,
                     meta={
                         "step": CELERY_STEP,
                         "progress": int((processed_frames / total_frames) * 100),
@@ -127,6 +129,14 @@ def track_and_crop(self, input_path: str, bbox: str):
         cap.release()
         out.release()
         cropped_out.release()
+
+        self.update_state(
+            state=PROGRESS_STATE,
+            meta={
+                "step": CELERY_STEP,
+                "progress": 100,
+            },
+        )
 
         return temp_cropped
 
@@ -147,13 +157,13 @@ def upscale_video(self, cropped_path: str):
     CELERY_STEP = "Upscaling"
 
     # Immediately update state to STARTED
-    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 0})
+    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 100})
 
     try:
         output_path = cropped_path.replace("_cropped.mp4", "_upscaled.mp4")
 
         self.update_state(
-            state="PROGRESS",
+            state=PROGRESS_STATE,
             meta={
                 "step": CELERY_STEP,
                 "progress": 50,
@@ -176,13 +186,13 @@ def perform_ocr(self, upscaled_path: str):
     CELERY_STEP = "Performing OCR"
 
     # Immediately update state to STARTED
-    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 0})
+    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 100})
 
     try:
         output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.txt")
 
         self.update_state(
-            state="PROGRESS",
+            state=PROGRESS_STATE,
             meta={
                 "step": CELERY_STEP,
                 "progress": 50,
@@ -194,7 +204,7 @@ def perform_ocr(self, upscaled_path: str):
             f.write("Fake OCR extracted text")
 
         self.update_state(
-            state="PROGRESS",
+            state=PROGRESS_STATE,
             meta={
                 "step": CELERY_STEP,
                 "progress": 100,
