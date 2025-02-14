@@ -6,11 +6,13 @@ from ultralytics import YOLO
 import cv2
 import os
 
+
 class BoundingBox(BaseModel):
     x1: int
     y1: int
     x2: int
     y2: int
+
 
 class BoundingBoxDrawer:
     def __init__(self):
@@ -48,15 +50,19 @@ class BoundingBoxDrawer:
             min(self.start_x, self.end_x),
             min(self.start_y, self.end_y),
             max(self.start_x, self.end_x),
-            max(self.start_y, self.end_y)
+            max(self.start_y, self.end_y),
         ]
 
     def draw_current_box(self, frame):
         if self.start_x != -1 and self.start_y != -1:
-            cv2.rectangle(frame,
-                          (self.start_x, self.start_y),
-                          (self.end_x, self.end_y),
-                          (255, 0, 0), 2)
+            cv2.rectangle(
+                frame,
+                (self.start_x, self.start_y),
+                (self.end_x, self.end_y),
+                (255, 0, 0),
+                2,
+            )
+
 
 class Tracker:
     def __init__(self, iou_threshold=0.2):
@@ -73,7 +79,7 @@ class Tracker:
             embedder_model_name=None,
             embedder_wts=None,
             polygon=False,
-            today=None
+            today=None,
         )
         self.target_track_id = None
         self.target_initialized = False
@@ -89,7 +95,7 @@ class Tracker:
         # Find the detection that best matches our target box
         best_iou = 0
         best_detection = None
-        
+
         for detection in detections:
             det_bbox = detection[0]  # [x, y, w, h]
             iou = self.calculate_iou(target_bbox, det_bbox)
@@ -148,6 +154,7 @@ class Tracker:
 
         return None, None
 
+
 class YoloDetector:
     def __init__(self, model_path, confidence):
         self.model = YOLO(model_path)
@@ -175,32 +182,43 @@ class YoloDetector:
             detections.append((([x1, y1, w, h]), class_number, conf))
         return detections
 
-async def handle_video_tracking(video: UploadFile, bbox: BoundingBox, detector: YoloDetector, TEMP_DIR: str):
+
+async def handle_video_tracking(
+    video: UploadFile, bbox: BoundingBox, detector: YoloDetector, TEMP_DIR: str
+):
     # Save uploaded video temporarily
     temp_input = os.path.join(TEMP_DIR, f"input_{video.filename}")
     temp_output = os.path.join(TEMP_DIR, f"output_{video.filename}")
     temp_cropped = os.path.join(TEMP_DIR, f"cropped_{video.filename}")
 
     try:
-        with open(temp_input, 'wb') as f:
+        with open(temp_input, "wb") as f:
             content = await video.read()
             f.write(content)
-        
+
         # Process video
         tracker = Tracker(iou_threshold=0.2)
         cap = cv2.VideoCapture(temp_input)
-        
+
         # Setup video writers
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(temp_output, fourcc, 
-                            cap.get(cv2.CAP_PROP_FPS),
-                            (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
-        
-        cropped_out = cv2.VideoWriter(temp_cropped, fourcc, 
-                                    cap.get(cv2.CAP_PROP_FPS),
-                                    (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1))
-        
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(
+            temp_output,
+            fourcc,
+            cap.get(cv2.CAP_PROP_FPS),
+            (
+                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            ),
+        )
+
+        cropped_out = cv2.VideoWriter(
+            temp_cropped,
+            fourcc,
+            cap.get(cv2.CAP_PROP_FPS),
+            (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1),
+        )
+
         target_initialized = False
         target_box = [bbox.x1, bbox.y1, bbox.x2, bbox.y2]
 
@@ -212,7 +230,9 @@ async def handle_video_tracking(video: UploadFile, bbox: BoundingBox, detector: 
             detections = detector.detect(frame)
 
             if not target_initialized:
-                target_initialized = tracker.initialize_target(target_box, detections, frame)
+                target_initialized = tracker.initialize_target(
+                    target_box, detections, frame
+                )
                 if not target_initialized:
                     continue
 
@@ -220,12 +240,13 @@ async def handle_video_tracking(video: UploadFile, bbox: BoundingBox, detector: 
                 tracking_id, box = tracker.track(detections, frame)
                 if box is not None:
                     x1, y1, x2, y2 = map(int, box)
-                    
+
                     # Crop the plate region
                     cropped_plate = frame[y1:y2, x1:x2]
                     if cropped_plate.size > 0:
-                        resized_plate = cv2.resize(cropped_plate, 
-                                                (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1))
+                        resized_plate = cv2.resize(
+                            cropped_plate, (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1)
+                        )
                         cropped_out.write(resized_plate)
 
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -238,13 +259,13 @@ async def handle_video_tracking(video: UploadFile, bbox: BoundingBox, detector: 
         cropped_out.release()
 
         # Return the cropped video
-        return FileResponse(temp_cropped, 
-                            media_type="video/mp4", 
-                            filename=f"cropped_{video.filename}")
+        return FileResponse(
+            temp_cropped, media_type="video/mp4", filename=f"cropped_{video.filename}"
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
     finally:
         # Clean up temporary files
         for temp_file in [temp_input, temp_output]:

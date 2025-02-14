@@ -1,7 +1,18 @@
 # client/main.py
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QPushButton, 
-                          QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSizePolicy,
-                          QFileDialog, QProgressBar, QMessageBox)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QPushButton,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QFrame,
+    QSizePolicy,
+    QFileDialog,
+    QProgressBar,
+    QMessageBox,
+)
 from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 import sys
@@ -9,6 +20,7 @@ import cv2
 import requests
 from pathlib import Path
 import json
+
 
 class VideoUploadThread(QThread):
     progress_update = pyqtSignal(str)
@@ -24,31 +36,30 @@ class VideoUploadThread(QThread):
     def run(self):
         try:
             self.progress_update.emit("Uploading video...")
-            
+
             # Prepare the files and data for upload
-            with open(self.video_path, 'rb') as video_file:
-                files = {'video': video_file}
-                data = {'bbox': json.dumps(self.bbox)}
-                
+            with open(self.video_path, "rb") as video_file:
+                files = {"video": video_file}
+                data = {"bbox": json.dumps(self.bbox)}
+
                 # Make the request
                 response = requests.post(
-                    f"{self.server_url}/process-video",
-                    files=files,
-                    data=data
+                    f"{self.server_url}/process-video", files=files, data=data
                 )
-            
+
             if response.status_code == 200:
                 # Save the received video
                 output_path = Path(self.video_path).parent / "cropped_output.mp4"
-                with open(output_path, 'wb') as f:
+                with open(output_path, "wb") as f:
                     f.write(response.content)
                 self.upload_complete.emit(str(output_path))
             else:
                 self.error_occurred.emit(f"Server error: {response.text}")
                 print(response.text)
-                
+
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")
+
 
 class VideoPlayerWindow(QMainWindow):
     def __init__(self, server_url="http://localhost:8000"):
@@ -58,7 +69,7 @@ class VideoPlayerWindow(QMainWindow):
         self.cap = None
         self.current_frame = None
         self.setup_ui()
-        
+
     def setup_ui(self):
         self.setWindowTitle("License Plate Tracker - Client")
         self.setMinimumSize(1600, 900)
@@ -71,7 +82,8 @@ class VideoPlayerWindow(QMainWindow):
 
         # Add upload button
         self.upload_button = QPushButton("Upload Video")
-        self.upload_button.setStyleSheet("""
+        self.upload_button.setStyleSheet(
+            """
             QPushButton {
                 padding: 8px 16px;
                 background-color: #4CAF50;
@@ -82,13 +94,16 @@ class VideoPlayerWindow(QMainWindow):
             QPushButton:hover {
                 background-color: #45a049;
             }
-        """)
+        """
+        )
         self.upload_button.clicked.connect(self.upload_video)
         layout.addWidget(self.upload_button)
 
         # Create video display container
         video_container = QWidget()
-        video_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        video_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         video_layout = QVBoxLayout(video_container)
         video_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -96,7 +111,9 @@ class VideoPlayerWindow(QMainWindow):
         self.video_label = QLabel()
         self.video_label.setFrameStyle(QFrame.Shape.Box)
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.video_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.video_label.setMinimumSize(640, 480)
         self.video_label.setStyleSheet("QLabel { background-color: #f0f0f0; }")
         video_layout.addWidget(self.video_label)
@@ -104,7 +121,8 @@ class VideoPlayerWindow(QMainWindow):
 
         # Create progress bar
         self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet("""
+        self.progress_bar.setStyleSheet(
+            """
             QProgressBar {
                 border: 2px solid grey;
                 border-radius: 5px;
@@ -113,7 +131,8 @@ class VideoPlayerWindow(QMainWindow):
             QProgressBar::chunk {
                 background-color: #4CAF50;
             }
-        """)
+        """
+        )
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
@@ -146,7 +165,7 @@ class VideoPlayerWindow(QMainWindow):
                 color: #666666;
             }
         """
-        
+
         self.play_button = QPushButton("Play")
         self.play_button.setEnabled(False)
         self.play_button.setCheckable(True)
@@ -154,10 +173,10 @@ class VideoPlayerWindow(QMainWindow):
 
         self.prev_frame_button = QPushButton("◀")
         self.prev_frame_button.setFixedWidth(50)
-        
+
         self.next_frame_button = QPushButton("▶")
         self.next_frame_button.setFixedWidth(50)
-        
+
         self.confirm_button = QPushButton("Process Video")
         self.confirm_button.setEnabled(False)
         self.confirm_button.setStyleSheet(button_style)
@@ -195,15 +214,16 @@ class VideoPlayerWindow(QMainWindow):
 
     def upload_video(self):
         file_name, _ = QFileDialog.getOpenFileName(
-            self, "Select Video", "", "Video Files (*.mp4 *.avi *.mov)")
-        
+            self, "Select Video", "", "Video Files (*.mp4 *.avi *.mov)"
+        )
+
         if file_name:
             if self.cap is not None:
                 self.cap.release()
-            
+
             self.video_path = file_name
             self.cap = cv2.VideoCapture(self.video_path)
-            
+
             if self.cap.isOpened():
                 self.play_button.setEnabled(True)
                 self.bbox = None
@@ -216,7 +236,7 @@ class VideoPlayerWindow(QMainWindow):
     def read_frame(self):
         if self.cap is None:
             return
-        
+
         ret, self.current_frame = self.cap.read()
         if ret:
             self.display_frame()
@@ -233,32 +253,36 @@ class VideoPlayerWindow(QMainWindow):
             return
 
         frame = self.current_frame.copy()
-        
+
         # Draw current box if exists
         if self.bbox is not None:
-            cv2.rectangle(frame, 
-                         (self.bbox[0], self.bbox[1]), 
-                         (self.bbox[2], self.bbox[3]), 
-                         (0, 255, 0), 2)
+            cv2.rectangle(
+                frame,
+                (self.bbox[0], self.bbox[1]),
+                (self.bbox[2], self.bbox[3]),
+                (0, 255, 0),
+                2,
+            )
 
         # Convert frame to QImage
         height, width, channel = frame.shape
         bytes_per_line = 3 * width
-        q_image = QImage(frame.data, width, height, bytes_per_line, 
-                        QImage.Format.Format_RGB888).rgbSwapped()
-        
+        q_image = QImage(
+            frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888
+        ).rgbSwapped()
+
         # Scale image to fit label while maintaining aspect ratio
         pixmap = QPixmap.fromImage(q_image)
         scaled_pixmap = pixmap.scaled(
             self.video_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
+            Qt.TransformationMode.SmoothTransformation,
         )
-        
+
         # Center the pixmap in the label
         x = (self.video_label.width() - scaled_pixmap.width()) // 2
         y = (self.video_label.height() - scaled_pixmap.height()) // 2
-        
+
         self.video_label.setPixmap(scaled_pixmap)
         self.video_label.setContentsMargins(x, y, x, y)
 
@@ -286,8 +310,11 @@ class VideoPlayerWindow(QMainWindow):
         self.read_frame()
 
     def mousePressEvent(self, event):
-        if (self.video_label.underMouse() and not self.is_playing 
-            and self.current_frame is not None):
+        if (
+            self.video_label.underMouse()
+            and not self.is_playing
+            and self.current_frame is not None
+        ):
             pos = self.video_label.mapFrom(self, event.pos())
             self.drawing = True
             self.start_point = self.convert_coordinates(pos)
@@ -302,7 +329,7 @@ class VideoPlayerWindow(QMainWindow):
                 min(self.start_point[0], current_point[0]),
                 min(self.start_point[1], current_point[1]),
                 max(self.start_point[0], current_point[0]),
-                max(self.start_point[1], current_point[1])
+                max(self.start_point[1], current_point[1]),
             ]
             self.display_frame()
 
@@ -311,28 +338,30 @@ class VideoPlayerWindow(QMainWindow):
             self.drawing = False
             if self.bbox is not None:
                 self.confirm_button.setEnabled(True)
-                self.statusBar().showMessage("Box drawn - Click 'Process Video' to begin tracking")
+                self.statusBar().showMessage(
+                    "Box drawn - Click 'Process Video' to begin tracking"
+                )
 
     def convert_coordinates(self, pos):
         """Convert Qt coordinates to video coordinates"""
         label_size = self.video_label.size()
         pixmap_size = self.video_label.pixmap().size()
-        
+
         # Calculate margins
         x_margin = (label_size.width() - pixmap_size.width()) // 2
         y_margin = (label_size.height() - pixmap_size.height()) // 2
-        
+
         # Adjust position
         adjusted_x = pos.x() - x_margin
         adjusted_y = pos.y() - y_margin
-        
+
         # Convert to original video coordinates
         scale_x = self.current_frame.shape[1] / pixmap_size.width()
         scale_y = self.current_frame.shape[0] / pixmap_size.height()
-        
+
         x = max(0, min(int(adjusted_x * scale_x), self.current_frame.shape[1]))
         y = max(0, min(int(adjusted_y * scale_y), self.current_frame.shape[0]))
-        
+
         return (x, y)
 
     def process_video(self):
@@ -341,17 +370,17 @@ class VideoPlayerWindow(QMainWindow):
             self.confirm_button.setEnabled(False)
             self.play_button.setEnabled(False)
             self.upload_button.setEnabled(False)
-            
+
             # Create and start upload thread
             self.upload_thread = VideoUploadThread(
-                self.video_path, 
+                self.video_path,
                 {
-                    'x1': self.bbox[0],
-                    'y1': self.bbox[1],
-                    'x2': self.bbox[2],
-                    'y2': self.bbox[3]
-                }, 
-                self.server_url
+                    "x1": self.bbox[0],
+                    "y1": self.bbox[1],
+                    "x2": self.bbox[2],
+                    "y2": self.bbox[3],
+                },
+                self.server_url,
             )
             self.upload_thread.progress_update.connect(self.update_progress)
             self.upload_thread.upload_complete.connect(self.processing_complete)
@@ -366,12 +395,14 @@ class VideoPlayerWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.play_button.setEnabled(True)
         self.upload_button.setEnabled(True)
-        self.statusBar().showMessage(f"Processing complete! Output saved to: {output_path}")
-        
+        self.statusBar().showMessage(
+            f"Processing complete! Output saved to: {output_path}"
+        )
+
         QMessageBox.information(
             self,
             "Processing Complete",
-            f"Video has been processed successfully!\nOutput saved to: {output_path}"
+            f"Video has been processed successfully!\nOutput saved to: {output_path}",
         )
 
     def handle_error(self, error_message):
@@ -380,11 +411,9 @@ class VideoPlayerWindow(QMainWindow):
         self.upload_button.setEnabled(True)
         self.confirm_button.setEnabled(True)
         self.statusBar().showMessage(f"Error: {error_message}")
-        
+
         QMessageBox.critical(
-            self,
-            "Error",
-            f"An error occurred during processing:\n{error_message}"
+            self, "Error", f"An error occurred during processing:\n{error_message}"
         )
 
     def closeEvent(self, event):
@@ -392,11 +421,13 @@ class VideoPlayerWindow(QMainWindow):
             self.cap.release()
         super().closeEvent(event)
 
+
 def main():
     app = QApplication(sys.argv)
     window = VideoPlayerWindow()
     window.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
