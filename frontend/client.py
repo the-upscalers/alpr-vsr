@@ -30,7 +30,7 @@ SERVER_URL = os.getenv("SERVER_URL")
 class VideoUploadThread(QThread):
     status_update = pyqtSignal(str)
     progress_update = pyqtSignal(int)
-    progress_complete = pyqtSignal(str)
+    progress_complete = pyqtSignal()
     error_occurred = pyqtSignal(str)
     start_timer = pyqtSignal(int)
 
@@ -59,7 +59,7 @@ class VideoUploadThread(QThread):
         if data.get("status") == "SUCCESS":
             self.timer.stop()
             self.status_update.emit("Processing Complete! Ready to download.")
-            self.download_btn.setEnabled(True)
+            self.progress_complete.emit()
 
     def run(self):
         try:
@@ -469,7 +469,7 @@ class VideoPlayerWindow(QMainWindow):
     def update_progress(self, progress):
         self.progress_bar.setValue(progress)
 
-    def processing_complete(self, output_path):
+    def processing_complete(self):
         self.progress_bar.setVisible(False)
         self.play_button.setEnabled(True)
         self.upload_button.setEnabled(True)
