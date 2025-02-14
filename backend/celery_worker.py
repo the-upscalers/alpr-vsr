@@ -139,6 +139,9 @@ def track_and_crop(self, input_path: str, bbox: str):
 def upscale_video(self, cropped_path: str):
     """Step 2: Upscale video"""
     CELERY_STEP = "Upscaling"
+
+    output_path = cropped_path.replace("_cropped.mp4", "_upscaled.mp4")
+
     self.update_state(
         state="PROGRESS",
         meta={
@@ -146,13 +149,19 @@ def upscale_video(self, cropped_path: str):
             "progress": 100,
         },
     )
-    pass
+    with open(output_path, "wb") as f:
+        f.write(b"Fake upscaled video data")
+
+    return output_path
 
 
 @celery.task(bind=True)
 def perform_ocr(self, upscaled_path: str):
     """Step 3: Perform OCR on video"""
     CELERY_STEP = "Performing OCR"
+
+    output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.txt")
+
     self.update_state(
         state="PROGRESS",
         meta={
@@ -160,4 +169,9 @@ def perform_ocr(self, upscaled_path: str):
             "progress": 100,
         },
     )
-    pass
+
+    # Fake OCR output (replace with real OCR logic)
+    with open(output_path, "w") as f:
+        f.write("Fake OCR extracted text")
+
+    return output_path
