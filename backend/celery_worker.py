@@ -1,25 +1,25 @@
 from celery import Celery
 import time
-import redis
 import os
 import json
 import cv2
 from dotenv import load_dotenv
 from track import BoundingBox, YoloDetector, Tracker
-from fastapi import HTTPException
 
 load_dotenv()
 
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
-
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = os.getenv("REDIS_PORT")
-REDIS_DB = os.getenv("REDIS_DB")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@rabbitmq//")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "rpc://")
 
 # Configure Celery and Redis
 celery = Celery("tasks", broker=CELERY_BROKER_URL, backend=CELERY_RESULT_BACKEND)
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+celery.conf.update(
+    task_track_started=True,
+    task_serializer="json",
+    result_serializer="json",
+    accept_content=["json"],
+    broker_connection_retry_on_startup=True,
+)
 
 # Initialize detector and tracker
 MODEL_PATH = os.getenv("MODEL_PATH")
@@ -32,17 +32,20 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 @celery.task(bind=True)
 def track_and_crop(self, input_path: str, bbox: str):
-    # """Step 1: Track and Crop video"""
+    """Step 1: Track and Crop video"""
     CELERY_STEP = "Tracking & Cropping"
+
+    # Immediately update state to STARTED
+    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 0})
 
     # Parse bounding box data
     try:
         bbox_data = json.loads(bbox)
         bbox = BoundingBox(**bbox_data)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid bbox JSON format")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid bbox JSON format: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid bbox data: {str(e)}")
+        raise ValueError(f"Invalid bbox data: {str(e)}")
 
     temp_output = input_path.replace("_input.mp4", "_output.mp4")
     temp_cropped = input_path.replace("_input.mp4", "_cropped.mp4")
@@ -50,6 +53,8 @@ def track_and_crop(self, input_path: str, bbox: str):
     try:
         # Process video
         cap = cv2.VideoCapture(input_path)
+        if not cap.isOpened():
+            raise IOError(f"Could not open video file: {input_path}")
 
         # Setup video writers
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -75,8 +80,6 @@ def track_and_crop(self, input_path: str, bbox: str):
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         processed_frames = 0
-
-        self.update_state(state="PROGRESS", meta={"step": CELERY_STEP, "progress": 0})
 
         while True:
             ret, frame = cap.read()
@@ -109,24 +112,27 @@ def track_and_crop(self, input_path: str, bbox: str):
 
             out.write(frame)
             processed_frames += 1
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "step": CELERY_STEP,
-                    "progress": int((processed_frames / total_frames) * 100),
-                },
-            )
+
+            # Update progress every 10 frames or so
+            if processed_frames % 10 == 0:
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "step": CELERY_STEP,
+                        "progress": int((processed_frames / total_frames) * 100),
+                    },
+                )
 
         # Clean up
         cap.release()
         out.release()
         cropped_out.release()
 
-        # Return the cropped video
         return temp_cropped
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
+        raise
 
     finally:
         # Clean up temporary files
@@ -140,19 +146,28 @@ def upscale_video(self, cropped_path: str):
     """Step 2: Upscale video"""
     CELERY_STEP = "Upscaling"
 
-    output_path = cropped_path.replace("_cropped.mp4", "_upscaled.mp4")
+    # Immediately update state to STARTED
+    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 0})
 
-    self.update_state(
-        state="PROGRESS",
-        meta={
-            "step": CELERY_STEP,
-            "progress": 100,
-        },
-    )
-    with open(output_path, "wb") as f:
-        f.write(b"Fake upscaled video data")
+    try:
+        output_path = cropped_path.replace("_cropped.mp4", "_upscaled.mp4")
 
-    return output_path
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "step": CELERY_STEP,
+                "progress": 50,
+            },
+        )
+
+        with open(output_path, "wb") as f:
+            f.write(b"Fake upscaled video data")
+
+        return output_path
+
+    except Exception as e:
+        self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
+        raise
 
 
 @celery.task(bind=True)
@@ -160,18 +175,34 @@ def perform_ocr(self, upscaled_path: str):
     """Step 3: Perform OCR on video"""
     CELERY_STEP = "Performing OCR"
 
-    output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.txt")
+    # Immediately update state to STARTED
+    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 0})
 
-    self.update_state(
-        state="PROGRESS",
-        meta={
-            "step": CELERY_STEP,
-            "progress": 100,
-        },
-    )
+    try:
+        output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.txt")
 
-    # Fake OCR output (replace with real OCR logic)
-    with open(output_path, "w") as f:
-        f.write("Fake OCR extracted text")
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "step": CELERY_STEP,
+                "progress": 50,
+            },
+        )
 
-    return output_path
+        # Fake OCR output (replace with real OCR logic)
+        with open(output_path, "w") as f:
+            f.write("Fake OCR extracted text")
+
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "step": CELERY_STEP,
+                "progress": 100,
+            },
+        )
+
+        return output_path
+
+    except Exception as e:
+        self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
+        raise
