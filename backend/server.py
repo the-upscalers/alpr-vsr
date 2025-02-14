@@ -5,7 +5,7 @@ import logging
 
 from track import BoundingBox
 from dotenv import load_dotenv
-from celery_worker import track_and_crop, upscale_video, perform_ocr, celery
+from tasks import track_and_crop, upscale_video, perform_ocr, celery
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
 from celery import chain
