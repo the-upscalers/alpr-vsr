@@ -21,25 +21,49 @@ import requests
 from pathlib import Path
 import json
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 SERVER_URL = os.getenv("SERVER_URL")
 
 
 class VideoUploadThread(QThread):
-    progress_update = pyqtSignal(str)
-    upload_complete = pyqtSignal(str)
+    status_update = pyqtSignal(str)
+    progress_update = pyqtSignal(int)
+    progress_complete = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
+    start_timer = pyqtSignal(int)
 
-    def __init__(self, video_path, bbox, server_url):
+    def __init__(self, video_path, bbox, server_url, timer):
         super().__init__()
         self.video_path = video_path
         self.bbox = bbox
         self.server_url = server_url
+        self.task_id = None
+        self.timer = timer
+        self.timer.timeout.connect(self.check_progress)
+
+    def check_progress(self):
+        if not self.task_id:
+            return
+
+        response = requests.get(f"{self.server_url}/task_status/{self.task_id}")
+        data = response.json()
+        progress = data.get("progress", 0)
+
+        self.progress_update.emit(progress)
+        self.status_update.emit(f"Progress: {progress}% ({data.get('status')})")
+
+        print(data)
+
+        if data.get("status") == "SUCCESS":
+            self.timer.stop()
+            self.status_update.emit("Processing Complete! Ready to download.")
+            self.download_btn.setEnabled(True)
 
     def run(self):
         try:
-            self.progress_update.emit("Uploading video...")
+            self.status_update.emit("Uploading video...")
 
             # Prepare the files and data for upload
             with open(self.video_path, "rb") as video_file:
@@ -52,14 +76,37 @@ class VideoUploadThread(QThread):
                 )
 
             if response.status_code == 200:
-                # Save the received video
-                output_path = Path(self.video_path).parent / "cropped_output.mp4"
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-                self.upload_complete.emit(str(output_path))
+                self.task_id = response.json()["task_id"]
+                self.status_update.emit(
+                    f"Video uploaded successfully! Task ID: {self.task_id}"
+                )
+                self.start_timer.emit(2000)  # Poll every 2 seconds
             else:
                 self.error_occurred.emit(f"Server error: {response.text}")
-                print(response.text)
+
+        except Exception as e:
+            self.error_occurred.emit(f"Error: {str(e)}")
+
+
+class VideoDownloadThread(QThread):
+    status_update = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, task_id, server_url):
+        super().__init__()
+        self.task_id = task_id
+        self.server_url = server_url
+
+    def run(self):
+        try:
+            response = requests.get(f"{self.server_url}/download/{self.task_id}")
+            if response.status_code == 200:
+                output_path = Path.home() / "Downloads" / f"{self.task_id}.mp4"
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+                self.status_update.emit("Output saved to: " + str(output_path))
+            else:
+                raise Exception(f"Server error: {response.text}")
 
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")
@@ -72,6 +119,7 @@ class VideoPlayerWindow(QMainWindow):
         self.video_path = None
         self.cap = None
         self.current_frame = None
+        self.timer = QTimer()
         self.setup_ui()
 
     def setup_ui(self):
@@ -185,6 +233,10 @@ class VideoPlayerWindow(QMainWindow):
         self.confirm_button.setEnabled(False)
         self.confirm_button.setStyleSheet(button_style)
 
+        self.download_button = QPushButton("Download Output")
+        self.download_button.setEnabled(False)
+        self.download_button.setStyleSheet(button_style)
+
         # Add buttons to controls layout
         controls_layout.addStretch()
         controls_layout.addWidget(self.prev_frame_button)
@@ -192,6 +244,8 @@ class VideoPlayerWindow(QMainWindow):
         controls_layout.addWidget(self.next_frame_button)
         controls_layout.addSpacing(20)
         controls_layout.addWidget(self.confirm_button)
+        controls_layout.addSpacing(20)
+        controls_layout.addWidget(self.download_button)
         controls_layout.addStretch()
 
         # Add controls to main layout
@@ -205,6 +259,7 @@ class VideoPlayerWindow(QMainWindow):
         self.prev_frame_button.clicked.connect(self.previous_frame)
         self.next_frame_button.clicked.connect(self.next_frame)
         self.confirm_button.clicked.connect(self.process_video)
+        self.download_button.clicked.connect(self.download_output)
 
         # Setup video playback
         self.timer = QTimer()
@@ -368,6 +423,9 @@ class VideoPlayerWindow(QMainWindow):
 
         return (x, y)
 
+    def start_timer(self, interval):
+        self.timer.start(interval)
+
     def process_video(self):
         if self.video_path and self.bbox:
             self.progress_bar.setVisible(True)
@@ -385,28 +443,39 @@ class VideoPlayerWindow(QMainWindow):
                     "y2": self.bbox[3],
                 },
                 self.server_url,
+                self.timer,
             )
+            self.upload_thread.status_update.connect(self.update_status)
             self.upload_thread.progress_update.connect(self.update_progress)
-            self.upload_thread.upload_complete.connect(self.processing_complete)
+            self.upload_thread.progress_complete.connect(self.processing_complete)
             self.upload_thread.error_occurred.connect(self.handle_error)
+            self.upload_thread.start_timer.connect(self.start_timer)
             self.upload_thread.start()
 
-    def update_progress(self, message):
+    def download_output(self):
+        if self.upload_thread and self.upload_thread.task_id:
+            self.download_button.setEnabled(False)
+            self.download_thread = VideoDownloadThread(
+                self.upload_thread.task_id, self.server_url
+            )
+            self.download_thread.status_update.connect(self.update_status)
+            self.download_thread.error_occurred.connect(self.handle_error)
+            self.download_thread.start()
+
+    def update_status(self, message):
         self.statusBar().showMessage(message)
         self.progress_bar.setFormat(message)
+
+    def update_progress(self, progress):
+        self.progress_bar.setValue(progress)
 
     def processing_complete(self, output_path):
         self.progress_bar.setVisible(False)
         self.play_button.setEnabled(True)
         self.upload_button.setEnabled(True)
+        self.download_button.setEnabled(True)
         self.statusBar().showMessage(
-            f"Processing complete! Output saved to: {output_path}"
-        )
-
-        QMessageBox.information(
-            self,
-            "Processing Complete",
-            f"Video has been processed successfully!\nOutput saved to: {output_path}",
+            f"Processing complete! Click 'Download Output' to save the result"
         )
 
     def handle_error(self, error_message):
