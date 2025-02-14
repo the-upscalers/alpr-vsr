@@ -20,6 +20,10 @@ import cv2
 import requests
 from pathlib import Path
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
+SERVER_URL = os.getenv("SERVER_URL")
 
 
 class VideoUploadThread(QThread):
@@ -62,7 +66,7 @@ class VideoUploadThread(QThread):
 
 
 class VideoPlayerWindow(QMainWindow):
-    def __init__(self, server_url="http://localhost:8000"):
+    def __init__(self, server_url=SERVER_URL):
         super().__init__()
         self.server_url = server_url
         self.video_path = None
