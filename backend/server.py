@@ -23,6 +23,7 @@ app = FastAPI()
 HOST = os.getenv("HOST")
 PORT = os.getenv("PORT")
 TEMP_DIR = os.getenv("TEMP_DIR")
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 task_metadata = {}  # Store task metadata
 

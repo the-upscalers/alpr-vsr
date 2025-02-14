@@ -2,6 +2,9 @@ services:
   fastapi_app:
     build: .
     container_name: fastapi_app
+    volumes:
+      - ./models:/app/models
+      - ./temp:/app/temp
     ports:
       - "8000:8000"
     depends_on:
@@ -12,7 +15,7 @@ services:
       - CELERY_RESULT_BACKEND=rpc://
       - HOST=0.0.0.0
       - PORT=8000
-      - TEMP_DIR=temp
+      - TEMP_DIR=/app/temp
 
   rabbitmq:
     image: "rabbitmq:3-management"
@@ -30,8 +33,11 @@ services:
     command: celery -A tasks worker --loglevel=info
     depends_on:
       - rabbitmq
+    volumes:
+      - ./models:/app/models
+      - ./temp:/app/temp
     environment:
       - CELERY_BROKER_URL=pyamqp://guest@rabbitmq//
       - CELERY_RESULT_BACKEND=rpc://
-      - MODEL_PATH=models/YOLOv11.pt
-      - TEMP_DIR=temp
+      - MODEL_PATH=/app/models/YOLOv11.pt
+      - TEMP_DIR=/app/temp
