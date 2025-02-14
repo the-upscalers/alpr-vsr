@@ -61,7 +61,7 @@ class VideoPlayerWindow(QMainWindow):
         
     def setup_ui(self):
         self.setWindowTitle("License Plate Tracker - Client")
-        self.setMinimumSize(1200, 900)
+        self.setMinimumSize(1600, 900)
 
         # Create central widget and main layout
         central_widget = QWidget()
