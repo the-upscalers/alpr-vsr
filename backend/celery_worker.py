@@ -1,10 +1,12 @@
-from celery import Celery, chain
+from celery import Celery
 import time
 import redis
 import os
+import json
+import cv2
 from dotenv import load_dotenv
-
-from track import BoundingBox, YoloDetector
+from track import BoundingBox, YoloDetector, Tracker
+from fastapi import HTTPException
 
 load_dotenv()
 
@@ -19,29 +21,34 @@ REDIS_DB = os.getenv("REDIS_DB")
 celery = Celery("tasks", broker=CELERY_BROKER_URL, backend=CELERY_RESULT_BACKEND)
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
 
-# Initialize detector
+# Initialize detector and tracker
 MODEL_PATH = os.getenv("MODEL_PATH")
 detector = YoloDetector(model_path=MODEL_PATH, confidence=0.4)
+tracker = Tracker(iou_threshold=0.2)
 
 TEMP_DIR = os.getenv("TEMP_DIR")
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 @celery.task(bind=True)
-def track_and_crop(self, input_path: str, bbox: BoundingBox):
+def track_and_crop(self, input_path: str, bbox: str):
     # """Step 1: Track and Crop video"""
     CELERY_STEP = "Tracking & Cropping"
+
+    # Parse bounding box data
+    try:
+        bbox_data = json.loads(bbox)
+        bbox = BoundingBox(**bbox_data)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid bbox JSON format")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid bbox data: {str(e)}")
 
     temp_output = input_path.replace("_input.mp4", "_output.mp4")
     temp_cropped = input_path.replace("_input.mp4", "_cropped.mp4")
 
     try:
-        with open(input_path, "wb") as f:
-            content = video.read()
-            f.write(content)
-
         # Process video
-        tracker = Tracker(iou_threshold=0.2)
         cap = cv2.VideoCapture(input_path)
 
         # Setup video writers
@@ -130,9 +137,27 @@ def track_and_crop(self, input_path: str, bbox: BoundingBox):
 
 @celery.task(bind=True)
 def upscale_video(self, cropped_path: str):
+    """Step 2: Upscale video"""
+    CELERY_STEP = "Upscaling"
+    self.update_state(
+        state="PROGRESS",
+        meta={
+            "step": CELERY_STEP,
+            "progress": 100,
+        },
+    )
     pass
 
 
 @celery.task(bind=True)
 def perform_ocr(self, upscaled_path: str):
+    """Step 3: Perform OCR on video"""
+    CELERY_STEP = "Performing OCR"
+    self.update_state(
+        state="PROGRESS",
+        meta={
+            "step": CELERY_STEP,
+            "progress": 100,
+        },
+    )
     pass
