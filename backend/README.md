@@ -7,7 +7,7 @@ docker run -d --name redis -p 6379:6379 redis
 ### Run Celery
 
 ```sh
-celery -A celery_worker worker --loglevel=info
+celery -A celery_worker worker --loglevel=info -P threads
 ```
 
 ### Run FastAPI
