@@ -49,7 +49,7 @@ services:
   flower:
     image: mher/flower
     container_name: flower
-    command: celery flower --broker=pyamqp://guest@rabbitmq//
+    command: celery --broker=pyamqp://guest@rabbitmq// flower
     ports:
       - "5555:5555"
     depends_on:
