@@ -80,7 +80,7 @@ class VideoUploadThread(QThread):
                 self.status_update.emit(
                     f"Video uploaded successfully! Task ID: {self.task_id}"
                 )
-                self.start_timer.emit(2000)  # Poll every 2 seconds
+                self.start_timer.emit(3000)  # Poll every 3 seconds
             else:
                 self.error_occurred.emit(f"Server error: {response.text}")
 
