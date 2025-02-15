@@ -2,13 +2,19 @@
 
 ## Setting up Backend (With Docker Compose)
 
-1. Build Docker image
+1. Change directory
+
+```sh
+cd backend
+```
+
+2. Build Docker image
 
 ```sh
 docker-compose build
 ```
 
-2. Run Docker image
+3. Run Docker image
 
 ```sh
 docker-compose up
