@@ -38,11 +38,11 @@ cd backend
 
 ```sh
 # For Linux/MacOS
-source env/bin/activate
+source .venv/bin/activate
 
 # For Windows
-env/Scripts/activate.bat # In CMD
-env/Scripts/Activate.ps1 # In Powershell
+.venv/Scripts/activate.bat # In CMD
+.venv/Scripts/Activate.ps1 # In Powershell
 ```
 
 4. Install dependencies
