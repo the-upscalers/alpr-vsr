@@ -1,6 +1,20 @@
 # Automatic License Plate Recognition with Video Super Resolution
 
-## Setting up Backend
+## Setting up Backend (With Docker Compose)
+
+1. Build Docker image
+
+```sh
+docker-compose build
+```
+
+2. Run Docker image
+
+```sh
+docker-compose up
+```
+
+## Setting up Backend (Without Docker Compose)
 
 1. Change directory
 
