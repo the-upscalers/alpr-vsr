@@ -20,6 +20,18 @@ docker-compose build
 docker-compose up
 ```
 
+`Note:` If you want to make changes to the backend code, you can restart the backend service by running the following command:
+
+```sh
+docker-compose up --force-recreate
+```
+
+If you install any new dependencies, you need to rebuild the Docker image by running the following command:
+
+```sh
+docker-compose up --build
+```
+
 ## Setting up Backend (Without Docker Compose)
 
 1. Change directory
