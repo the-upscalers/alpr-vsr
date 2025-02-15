@@ -3,8 +3,10 @@ import time
 import os
 import json
 import cv2
+import torch
 from dotenv import load_dotenv
 from track import BoundingBox, YoloDetector, Tracker
+from upscale import realBasicVSR, load_video_to_tensor, convert_tensor_to_video
 
 load_dotenv()
 
@@ -37,8 +39,7 @@ def track_and_crop(self, input_path: str, bbox: str):
     """Step 1: Track and Crop video"""
     CELERY_STEP = "Tracking & Cropping"
 
-    # Immediately update state to STARTED
-    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 0})
+    self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
 
     # Parse bounding box data
     try:
@@ -156,11 +157,25 @@ def upscale_video(self, cropped_path: str):
     """Step 2: Upscale video"""
     CELERY_STEP = "Upscaling"
 
-    # Immediately update state to STARTED
-    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 100})
+    self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
 
     try:
         output_path = cropped_path.replace("_cropped.mp4", "_upscaled.mp4")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        video_tensor = load_video_to_tensor(cropped_path)
+        video_tensor = video_tensor.to(device)
+
+        self.update_state(
+            state=PROGRESS_STATE,
+            meta={
+                "step": CELERY_STEP,
+                "progress": 25,
+            },
+        )
+
+        realBasicVSR.eval()
+        with torch.no_grad():
+            sr_video_tensor = realBasicVSR(video_tensor)
 
         self.update_state(
             state=PROGRESS_STATE,
@@ -170,9 +185,11 @@ def upscale_video(self, cropped_path: str):
             },
         )
 
-        with open(output_path, "wb") as f:
-            f.write(b"Fake upscaled video data")
+        convert_tensor_to_video(sr_video_tensor, output_path)
 
+        self.update_state(
+            state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 100}
+        )
         return output_path
 
     except Exception as e:
@@ -186,7 +203,7 @@ def perform_ocr(self, upscaled_path: str):
     CELERY_STEP = "Performing OCR"
 
     # Immediately update state to STARTED
-    self.update_state(state="STARTED", meta={"step": CELERY_STEP, "progress": 100})
+    self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
 
     try:
         output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.txt")
@@ -211,6 +228,13 @@ def perform_ocr(self, upscaled_path: str):
             },
         )
 
+        self.update_state(
+            state=PROGRESS_STATE,
+            meta={
+                "step": CELERY_STEP,
+                "progress": 100,
+            },
+        )
         return output_path
 
     except Exception as e:
