@@ -69,7 +69,6 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
 
         # Store the task information
         task_metadata[task_id] = {
-            "chain_id": result.id,
             "input_path": input_path,
             "task_ids": [result.parent.parent.id, result.parent.id, result.id],
             "task_sequence": ["track_and_crop", "upscale_video", "perform_ocr"],
@@ -104,19 +103,19 @@ async def get_task_status(task_id: str):
         return {"error": "No tasks found for this task ID"}
 
     for idx, task_id in enumerate(task_ids):
-        task_result = AsyncResult(task_id, app=celery)
-        task_states[task_sequence[idx]] = task_result.state
+        task_result = celery.AsyncResult(task_id)
+        task_states[task_sequence[idx]] = task_result.status
 
-        if task_result.state == "SUCCESS":
+        if task_result.status == "SUCCESS":
             total_progress += 100 / num_tasks
-        elif task_result.state == "PROGRESS":
+        elif task_result.status == "PROGRESS":
             step_progress = (
                 task_result.info.get("progress", 0)
                 if isinstance(task_result.info, dict)
                 else 0
             )
             total_progress += step_progress / num_tasks
-        elif task_result.state == "FAILURE":
+        elif task_result.status == "FAILURE":
             return {
                 "task_id": task_id,
                 "status": "FAILURE",

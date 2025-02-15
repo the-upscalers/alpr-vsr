@@ -1,4 +1,4 @@
-from celery import Celery
+from celery import Celery, states
 import time
 import os
 import json
@@ -6,7 +6,7 @@ import cv2
 import torch
 from dotenv import load_dotenv
 from track import BoundingBox, YoloDetector, Tracker
-from upscale import realBasicVSR, load_video_to_tensor, convert_tensor_to_video
+from upscale import load_realbasicvsr, load_video_to_tensor, convert_tensor_to_video
 
 load_dotenv()
 
@@ -29,6 +29,9 @@ celery.conf.update(
 YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH")
 detector = YoloDetector(model_path=YOLO_MODEL_PATH, confidence=0.4)
 tracker = Tracker(iou_threshold=0.2)
+
+# Load RealBasicVSR model
+realBasicVSR = load_realbasicvsr()
 
 TEMP_DIR = os.getenv("TEMP_DIR")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -219,14 +222,6 @@ def perform_ocr(self, upscaled_path: str):
         # Fake OCR output (replace with real OCR logic)
         with open(output_path, "w") as f:
             f.write("Fake OCR extracted text")
-
-        self.update_state(
-            state=PROGRESS_STATE,
-            meta={
-                "step": CELERY_STEP,
-                "progress": 100,
-            },
-        )
 
         self.update_state(
             state=PROGRESS_STATE,
