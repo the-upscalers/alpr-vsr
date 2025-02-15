@@ -81,6 +81,12 @@ celery -A tasks worker --loglevel=info -P threads
 fastapi dev server.py
 ```
 
+#### 8. Run Celery Flower (Optional)
+
+```sh
+docker run -d --name flower -p 5555:5555 --network="host" -e CELERY_BROKER_URL=pyamqp://guest@localhost// mher/flower
+```
+
 ## Setting up Frontend
 
 #### 1. Change directory
