@@ -24,8 +24,8 @@ celery.conf.update(
 )
 
 # Initialize detector and tracker
-MODEL_PATH = os.getenv("MODEL_PATH")
-detector = YoloDetector(model_path=MODEL_PATH, confidence=0.4)
+YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH")
+detector = YoloDetector(model_path=YOLO_MODEL_PATH, confidence=0.4)
 tracker = Tracker(iou_threshold=0.2)
 
 TEMP_DIR = os.getenv("TEMP_DIR")

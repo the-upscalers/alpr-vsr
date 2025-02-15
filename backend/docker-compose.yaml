@@ -41,8 +41,10 @@ services:
     environment:
       - CELERY_BROKER_URL=pyamqp://guest@rabbitmq//
       - CELERY_RESULT_BACKEND=rpc://
-      - MODEL_PATH=/app/models/YOLOv11.pt
       - TEMP_DIR=/app/temp
+      - YOLO_MODEL_PATH=/app/models/YOLOv11.pt
+      - REAL_BASIC_VSR_PATH=/app/models/realbasicvsr.pth
+      - SPYNET_PATH=/app/models/spynet-pretrained.pth
 
   flower:
     image: mher/flower
