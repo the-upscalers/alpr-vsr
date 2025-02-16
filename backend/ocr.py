@@ -1,8 +1,9 @@
 import cv2
-from fast_plate_ocr import ONNXPlateRecognizer
+import numpy as np
+import matplotlib.pyplot as plt
 from collections import Counter
 from difflib import SequenceMatcher
-import numpy as np
+from fast_plate_ocr import ONNXPlateRecognizer
 
 
 class LicensePlateOCR:
@@ -10,160 +11,283 @@ class LicensePlateOCR:
         self.model = ONNXPlateRecognizer(model_path)
 
     def extract_frames(self, video_path, frame_skip=3):
-        """Extracts frames from a video, skipping some for efficiency."""
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
-
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-
             if frame_count % frame_skip == 0:
                 frames.append(frame)
-
             frame_count += 1
-
         cap.release()
         return frames
 
     def preprocess_image(self, image):
-        """Preprocesses image for better OCR accuracy."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
-        _, thresh = cv2.threshold(
-            gray, 120, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )  # Apply thresholding
-        return thresh
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return gray
 
     def perform_ocr(self, frames):
-        """Runs OCR on each frame and collects results."""
         ocr_results = []
-
         for frame in frames:
             processed_frame = self.preprocess_image(frame)
             text = self.model.run(processed_frame)
-
-            # Clean up text output
             if text and len(text) > 0:
-                text = text[0].strip().replace(" ", "").upper()
-                text = text.replace("_", "")
-
-                # Basic validation
-                if len(text) >= 4:  # Minimum realistic plate length
+                text = text[0].strip().replace(" ", "").upper().replace("_", "")
+                if len(text) >= 4:
                     ocr_results.append(text)
-
         return ocr_results
 
-    def calculate_string_similarity(self, str1, str2):
-        """Calculate similarity ratio between two strings."""
-        return SequenceMatcher(None, str1, str2).ratio()
-
-    def find_most_common_length(self, results):
-        """Find the most common length among OCR results."""
-        lengths = [len(result) for result in results]
-        return Counter(lengths).most_common(1)[0][0]
-
-    def cluster_similar_results(self, results, similarity_threshold=0.8):
-        """Group similar OCR results together."""
-        clusters = []
-
-        for result in results:
-            added_to_cluster = False
-
-            for cluster in clusters:
-                if any(
-                    self.calculate_string_similarity(result, existing)
-                    >= similarity_threshold
-                    for existing in cluster
-                ):
-                    cluster.append(result)
-                    added_to_cluster = True
-                    break
-
-            if not added_to_cluster:
-                clusters.append([result])
-
-        return clusters
-
-    def get_character_frequencies(self, results, expected_length):
-        """Analyze character frequencies at each position."""
-        char_frequencies = [{} for _ in range(expected_length)]
-
-        for result in results:
-            if len(result) == expected_length:
-                for i, char in enumerate(result):
-                    char_frequencies[i][char] = char_frequencies[i].get(char, 0) + 1
-
-        return char_frequencies
-
-    def construct_final_plate(self, char_frequencies):
-        """Construct final plate number using most frequent characters."""
-        final_plate = ""
-
-        for pos_freq in char_frequencies:
-            if pos_freq:
-                most_common_char = max(pos_freq.items(), key=lambda x: x[1])[0]
-                final_plate += most_common_char
-
-        return final_plate
-
-    def get_final_plate(self, video_path, min_confidence=0.6):
-        """
-        Main function to extract and refine license plate text from a video.
-        Returns tuple of (plate_number, confidence_score)
-        """
-        # Extract and process frames
-        frames = self.extract_frames(video_path)
-        ocr_results = self.perform_ocr(frames)
-
+    def analyze_results(self, ocr_results):
         if not ocr_results:
             return None, 0.0
 
-        # Find most common length to filter out obvious errors
-        expected_length = self.find_most_common_length(ocr_results)
+        # Filter out results with unexpected lengths
+        expected_length = Counter(map(len, ocr_results)).most_common(1)[0][0]
         filtered_results = [r for r in ocr_results if len(r) == expected_length]
-
         if not filtered_results:
             return None, 0.0
 
         # Cluster similar results
-        clusters = self.cluster_similar_results(filtered_results)
-
-        print(clusters)
-
-        # Get the largest cluster
+        clusters = []
+        for result in filtered_results:
+            added = False
+            for cluster in clusters:
+                if any(
+                    SequenceMatcher(None, result, c).ratio() >= 0.8 for c in cluster
+                ):
+                    cluster.append(result)
+                    added = True
+                    break
+            if not added:
+                clusters.append([result])
         largest_cluster = max(clusters, key=len)
 
-        # Calculate character frequencies for the largest cluster
-        char_frequencies = self.get_character_frequencies(
-            largest_cluster, expected_length
+        # Calculate character frequencies
+        char_frequencies = [{} for _ in range(expected_length)]
+        for result in largest_cluster:
+            for i, char in enumerate(result):
+                char_frequencies[i][char] = char_frequencies[i].get(char, 0) + 1
+
+        # Get the most frequent character for each position
+        final_plate = "".join(
+            max(freq.items(), key=lambda x: x[1])[0]
+            for freq in char_frequencies
+            if freq
+        )
+        confidence = len(largest_cluster) / len(filtered_results)
+        return final_plate, confidence
+
+    def get_final_plate(self, video_path):
+        frames = self.extract_frames(video_path)
+        ocr_results = self.perform_ocr(frames)
+        return self.analyze_results(ocr_results)
+
+
+class LicensePlateOCRVisualizer:
+    def __init__(self, ocr_model):
+        self.model = ocr_model
+
+    def visualize(self, video_path, frame_skip=3, output_path=None):
+        frames = self.model.extract_frames(video_path, frame_skip)
+        ocr_results = self.model.perform_ocr(frames)
+        final_plate, confidence = self.model.analyze_results(ocr_results)
+
+        if not frames or not ocr_results:
+            print("No data to visualize.")
+            return
+
+        plt.style.use("dark_background")
+        fig = plt.figure(figsize=(20, 10))
+        gs = fig.add_gridspec(2, 3)
+
+        # Create the axes with specific spans
+        axes = {}
+        axes[0, 0] = fig.add_subplot(gs[0, 0])  # Upscaled Frames
+        axes[0, 1] = fig.add_subplot(gs[0, 1])  # Processed Frames
+        axes[0, 2] = fig.add_subplot(gs[0, 2])  # Confidence Timeline
+        axes[1, 0] = fig.add_subplot(gs[1, 0])  # OCR Timeline
+        axes[1, 1] = fig.add_subplot(gs[1, 1])  # Confidence Ranking (spans 2 columns)
+        axes[1, 2] = fig.add_subplot(gs[1, 2])  # Character Frequency
+
+        self.plot_frames(axes[0, 0], frames[:6], "Upscaled Frames", gray=False)
+        processed_frames = [self.model.preprocess_image(frame) for frame in frames[:6]]
+        self.plot_frames(axes[0, 1], processed_frames, "Processed Frames")
+        self.plot_confidence_timeline(axes[0, 2], ocr_results)
+        self.plot_ocr_timeline(axes[1, 0], ocr_results)
+        self.plot_confidence_ranking(axes[1, 1], ocr_results)
+        self.plot_char_frequency_heatmap(axes[1, 2], ocr_results)
+
+        plt.tight_layout()
+
+        if output_path:
+            plt.savefig(output_path)
+        else:
+            plt.show()
+
+        print(f"Final Plate: {final_plate}, Confidence: {confidence:.2f}")
+
+    def plot_frames(self, ax, frames, title, gray=True):
+        if not frames:
+            return
+        rows, cols = 2, 3
+        grid = np.zeros(
+            (
+                rows * frames[0].shape[0],
+                cols * frames[0].shape[1],
+                3 if not gray else 1,
+            ),
+            dtype=frames[0].dtype,
+        )
+        for idx, frame in enumerate(frames[: rows * cols]):
+            i, j = divmod(idx, cols)
+            if gray and len(frame.shape) == 3:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if not gray and len(frame.shape) == 3:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if gray and len(frame.shape) == 2:
+                frame = frame[:, :, np.newaxis]
+            y1, y2 = i * frame.shape[0], (i + 1) * frame.shape[0]
+            x1, x2 = j * frame.shape[1], (j + 1) * frame.shape[1]
+            if gray:
+                grid[y1:y2, x1:x2] = frame
+            else:
+                grid[y1:y2, x1:x2, :] = frame
+        if gray:
+            ax.imshow(grid, cmap="gray")
+        else:
+            ax.imshow(grid)
+        ax.set_title(title)
+        ax.axis("off")
+
+    def plot_ocr_timeline(self, ax, ocr_results):
+        if not ocr_results:
+            return
+        result_counts = Counter(ocr_results)
+        ax.bar(result_counts.keys(), result_counts.values(), color="skyblue")
+        ax.set_title("OCR Results Distribution")
+        ax.set_xlabel("Detected Plate Numbers")
+        ax.set_ylabel("Frequency")
+        plt.setp(ax.get_xticklabels(), rotation=45)
+
+    def plot_char_frequency_heatmap(self, ax, ocr_results):
+        if not ocr_results:
+            return
+        most_common_length = Counter(map(len, ocr_results)).most_common(1)[0][0]
+        filtered_results = [r for r in ocr_results if len(r) == most_common_length]
+        unique_chars = sorted(set("".join(filtered_results)))
+        char_freq = np.zeros((len(unique_chars), most_common_length))
+        for result in filtered_results:
+            for pos, char in enumerate(result):
+                char_freq[unique_chars.index(char)][pos] += 1
+        char_freq /= len(filtered_results)
+        im = ax.imshow(char_freq, cmap="YlOrRd", aspect="auto")
+        ax.set_title("Character Frequency by Position")
+        ax.set_yticks(range(len(unique_chars)))
+        ax.set_yticklabels(unique_chars)
+        ax.set_xticks(range(most_common_length))
+        ax.set_xlabel("Character Position")
+        plt.colorbar(im, ax=ax)
+
+    def plot_confidence_timeline(self, ax, ocr_results):
+        if not ocr_results:
+            return
+        # Calculate similarity scores between consecutive readings
+        similarities = []
+        for i in range(len(ocr_results) - 1):
+            similarity = SequenceMatcher(
+                None, ocr_results[i], ocr_results[i + 1]
+            ).ratio()
+            similarities.append(similarity)
+
+        ax.plot(similarities, color="lime", linewidth=2)
+        ax.fill_between(range(len(similarities)), similarities, alpha=0.3, color="lime")
+        ax.set_title("Reading Confidence Timeline")
+        ax.set_xlabel("Frame Number")
+        ax.set_ylabel("Confidence Score")
+        ax.set_ylim(0, 1)
+        ax.grid(True, alpha=0.3)
+
+    def plot_confidence_ranking(self, ax, ocr_results):
+        if not ocr_results:
+            return
+
+        # Calculate confidence scores
+        readings = Counter(ocr_results)
+        total_readings = len(ocr_results)
+        confidence_ranking = [
+            (plate, count / total_readings) for plate, count in readings.items()
+        ]
+
+        # Sort and get top 10
+        top_10 = sorted(confidence_ranking, key=lambda x: x[1], reverse=True)[:10]
+
+        # Remove axes
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+
+        # Create title with nice background (fixed bbox parameters)
+        ax.text(
+            0.5,
+            0.95,
+            "Top License Plate Readings",
+            ha="center",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            bbox=dict(facecolor="navy", alpha=0.3, edgecolor="none", pad=8),
         )
 
-        # Construct final plate number
-        final_plate = self.construct_final_plate(char_frequencies)
+        # Create headers
+        ax.text(0.1, 0.85, "RANK", fontweight="bold", fontsize=12, color="gray")
+        ax.text(0.25, 0.85, "PLATE", fontweight="bold", fontsize=12, color="gray")
+        ax.text(0.6, 0.85, "CONFIDENCE", fontweight="bold", fontsize=12, color="gray")
 
-        # Calculate confidence score
-        cluster_size = len(largest_cluster)
-        total_results = len(filtered_results)
-        confidence_score = cluster_size / total_results if total_results > 0 else 0.0
+        # Add a subtle line under headers
+        ax.axhline(y=0.82, xmin=0.08, xmax=0.92, color="gray", alpha=0.3, linewidth=1)
 
-        if confidence_score < min_confidence:
-            return None, confidence_score
+        # Add entries
+        for i, (plate, confidence) in enumerate(top_10):
+            y_pos = 0.75 - (i * 0.07)
 
-        return final_plate, confidence_score
+            rank_text = f"#{i+1}"
+            ax.text(0.1, y_pos, rank_text, ha="left", va="center", fontsize=11)
+            ax.text(
+                0.25,
+                y_pos,
+                plate,
+                ha="left",
+                va="center",
+                fontsize=11,
+                fontweight="bold",
+            )
+            ax.text(
+                0.6, y_pos, f"{confidence:.1%}", ha="left", va="center", fontsize=11
+            )
+
+            # Add subtle alternating background for better readability
+            if i % 2 == 0:
+                ax.axhspan(
+                    y_pos - 0.03,
+                    y_pos + 0.03,
+                    xmin=0.08,
+                    xmax=0.92,
+                    color="white",
+                    alpha=0.05,
+                )
 
 
-# Example usage:
 def main():
-    video_file = "temp/output_video_1.mp4"
+    video_file = "temp/upscaled/output_video_2.mp4"
     ocr = LicensePlateOCR()
-    final_plate, confidence = ocr.get_final_plate(video_file)
-
-    if final_plate:
-        print(f"Detected License Plate: {final_plate} (Confidence: {confidence:.2f})")
-    else:
-        print("Could not determine license plate with sufficient confidence")
+    visualizer = LicensePlateOCRVisualizer(ocr)
+    visualizer.visualize(video_file, output_path="temp/ocr_viz.png")
 
 
 if __name__ == "__main__":
