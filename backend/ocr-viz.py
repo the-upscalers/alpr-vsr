@@ -86,9 +86,11 @@ class LicensePlateOCRVisualizer:
         frames = self.model.extract_frames(video_path, frame_skip)
         ocr_results = self.model.perform_ocr(frames)
         final_plate, confidence = self.model.analyze_results(ocr_results)
+
         if not frames or not ocr_results:
             print("No data to visualize.")
             return
+
         plt.style.use("dark_background")
         fig, axes = plt.subplots(2, 2, figsize=(20, 10))
         self.plot_frames(axes[0, 0], frames[:6], "Original Frames", gray=False)
@@ -98,6 +100,7 @@ class LicensePlateOCRVisualizer:
         self.plot_char_frequency_heatmap(axes[1, 1], ocr_results)
         plt.tight_layout()
         plt.show()
+
         print(f"Final Plate: {final_plate}, Confidence: {confidence:.2f}")
 
     def plot_frames(self, ax, frames, title, gray=True):
