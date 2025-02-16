@@ -93,7 +93,7 @@ class LicensePlateOCRVisualizer:
 
         plt.style.use("dark_background")
         fig, axes = plt.subplots(2, 2, figsize=(20, 10))
-        self.plot_frames(axes[0, 0], frames[:6], "Original Frames", gray=False)
+        self.plot_frames(axes[0, 0], frames[:6], "Upscaled Frames", gray=False)
         processed_frames = [self.model.preprocess_image(f) for f in frames[:6]]
         self.plot_frames(axes[0, 1], processed_frames, "Processed Frames", gray=True)
         self.plot_ocr_timeline(axes[1, 0], ocr_results)
@@ -167,7 +167,7 @@ class LicensePlateOCRVisualizer:
 
 
 def main():
-    video_file = "temp/output_video_1.mp4"
+    video_file = "temp/cropped/cropped_number_plate_1.mp4"
     ocr = LicensePlateOCR()
     visualizer = LicensePlateOCRVisualizer(ocr)
     visualizer.visualize(video_file)
