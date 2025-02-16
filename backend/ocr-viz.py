@@ -91,28 +91,45 @@ class LicensePlateOCRVisualizer:
             return
         plt.style.use("dark_background")
         fig, axes = plt.subplots(2, 2, figsize=(20, 10))
-        self.plot_frames(axes[0, 0], frames[:6], "Original Frames")
+        self.plot_frames(axes[0, 0], frames[:6], "Original Frames", gray=False)
         processed_frames = [self.model.preprocess_image(f) for f in frames[:6]]
-        self.plot_frames(axes[0, 1], processed_frames, "Processed Frames")
+        self.plot_frames(axes[0, 1], processed_frames, "Processed Frames", gray=True)
         self.plot_ocr_timeline(axes[1, 0], ocr_results)
         self.plot_char_frequency_heatmap(axes[1, 1], ocr_results)
         plt.tight_layout()
         plt.show()
         print(f"Final Plate: {final_plate}, Confidence: {confidence:.2f}")
 
-    def plot_frames(self, ax, frames, title):
+    def plot_frames(self, ax, frames, title, gray=True):
         if not frames:
             return
         rows, cols = 2, 3
-        grid = np.zeros((rows * frames[0].shape[0], cols * frames[0].shape[1]))
+        grid = np.zeros(
+            (
+                rows * frames[0].shape[0],
+                cols * frames[0].shape[1],
+                3 if not gray else 1,
+            ),
+            dtype=frames[0].dtype,
+        )
         for idx, frame in enumerate(frames[: rows * cols]):
             i, j = divmod(idx, cols)
-            if len(frame.shape) == 3:
+            if gray and len(frame.shape) == 3:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if not gray and len(frame.shape) == 3:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if gray and len(frame.shape) == 2:
+                frame = frame[:, :, np.newaxis]
             y1, y2 = i * frame.shape[0], (i + 1) * frame.shape[0]
             x1, x2 = j * frame.shape[1], (j + 1) * frame.shape[1]
-            grid[y1:y2, x1:x2] = frame
-        ax.imshow(grid, cmap="gray")
+            if gray:
+                grid[y1:y2, x1:x2] = frame
+            else:
+                grid[y1:y2, x1:x2, :] = frame
+        if gray:
+            ax.imshow(grid, cmap="gray")
+        else:
+            ax.imshow(grid)
         ax.set_title(title)
         ax.axis("off")
 
