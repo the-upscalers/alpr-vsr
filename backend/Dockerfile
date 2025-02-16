@@ -4,8 +4,8 @@ FROM python:3.12
 # Set the working directory
 WORKDIR /app
 
-# Copy the FastAPI and Celery app code into the container
-COPY . .
+# Copy requirements.txt
+COPY requirements.txt .
 
 RUN apt-get update
 RUN apt install -y libgl1-mesa-glx
@@ -13,6 +13,9 @@ RUN apt-get install -y libgl1 libglib2.0-0
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application
+COPY . .
 
 EXPOSE 8000
 
