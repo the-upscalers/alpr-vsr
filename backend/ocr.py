@@ -283,6 +283,12 @@ class LicensePlateOCRVisualizer:
                 )
 
 
+def perform_ocr_on_video(video_file, output_path):
+    ocr = LicensePlateOCR()
+    visualizer = LicensePlateOCRVisualizer(ocr)
+    visualizer.visualize(video_file, output_path=output_path)
+
+
 def main():
     video_file = "temp/upscaled/output_video_2.mp4"
     ocr = LicensePlateOCR()

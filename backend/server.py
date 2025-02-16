@@ -145,7 +145,7 @@ async def download_video(task_id: str):
         return {"error": "File not available yet"}
 
     return FileResponse(
-        final_output_path, media_type="text/plain", filename=f"{task_id}_ocr.txt"
+        final_output_path, media_type="text/plain", filename=f"{task_id}_ocr.png"
     )
 
 

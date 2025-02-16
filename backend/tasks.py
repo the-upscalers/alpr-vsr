@@ -5,8 +5,10 @@ import json
 import cv2
 import torch
 from dotenv import load_dotenv
+
 from track import BoundingBox, YoloDetector, Tracker
 from upscale import load_realbasicvsr, load_video_to_tensor, convert_tensor_to_video
+from ocr import perform_ocr_on_video
 
 load_dotenv()
 
@@ -141,9 +143,6 @@ def track_and_crop(self, input_path: str, bbox: str):
                 "progress": 100,
             },
         )
-
-        return temp_cropped
-
     except Exception as e:
         self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
         raise
@@ -153,6 +152,8 @@ def track_and_crop(self, input_path: str, bbox: str):
         for temp_file in [input_path, temp_output]:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+
+    return temp_cropped
 
 
 @celery.task(bind=True)
@@ -209,7 +210,7 @@ def perform_ocr(self, upscaled_path: str):
     self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
 
     try:
-        output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.txt")
+        output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.png")
 
         self.update_state(
             state=PROGRESS_STATE,
@@ -219,9 +220,7 @@ def perform_ocr(self, upscaled_path: str):
             },
         )
 
-        # Fake OCR output (replace with real OCR logic)
-        with open(output_path, "w") as f:
-            f.write("Fake OCR extracted text")
+        perform_ocr_on_video(upscaled_path, output_path)
 
         self.update_state(
             state=PROGRESS_STATE,
