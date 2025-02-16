@@ -72,7 +72,7 @@ docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 #### 6. Start Celery Worker
 
 ```sh
-celery -A tasks worker --loglevel=info -P threads
+celery -A tasks worker --loglevel=info --pool=solo --without-gossip --without-mingle --without-heartbeat -Ofair
 ```
 
 #### 7. Start FastAPI
