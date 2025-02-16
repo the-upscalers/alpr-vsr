@@ -40,7 +40,11 @@ def load_model_weights(model, checkpoint_path):
     if "state_dict" in state_dict:
         state_dict = state_dict["state_dict"]
 
-    del state_dict["step_counter"]
+    if "model_state_dict" in state_dict:
+        state_dict = state_dict["model_state_dict"]
+
+    if "step_counter" in state_dict:
+        del state_dict["step_counter"]
 
     # Load the modified state dict
     model.load_state_dict(state_dict, strict=True)
@@ -159,3 +163,23 @@ def load_realbasicvsr():
     realBasicVSR = realBasicVSR.to(device)
 
     return realBasicVSR
+
+
+def main():
+    video_path = "temp/cropped/cropped_number_plate_1.mp4"
+    output_path = "temp/output/output_video_1_upscaled.mp4"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    realBasicVSR = load_realbasicvsr()
+    video_tensor = load_video_to_tensor(video_path)
+    video_tensor = video_tensor.to(device)
+
+    realBasicVSR.eval()
+    with torch.no_grad():
+        sr_video_tensor = realBasicVSR(video_tensor)
+
+    convert_tensor_to_video(sr_video_tensor, output_path)
+
+
+if __name__ == "__main__":
+    main()
