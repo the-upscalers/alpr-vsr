@@ -56,11 +56,9 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
 
     # Create and execute the chain
     try:
-        workflow = chain(
+        result = chain(
             track_and_crop.s(input_path, bbox), upscale_video.s(), perform_ocr.s()
-        )
-
-        result = workflow.apply_async()
+        ).apply_async()
         logger.debug(f"Created chain with ID: {result.id}")
 
         # Try to get initial state
@@ -102,13 +100,13 @@ async def get_task_status(task_id: str):
     if num_tasks == 0:
         return {"error": "No tasks found for this task ID"}
 
-    for idx, task_id in enumerate(task_ids):
-        task_result = celery.AsyncResult(task_id)
+    for idx, id in enumerate(task_ids):
+        task_result = AsyncResult(id, app=celery)
         task_states[task_sequence[idx]] = task_result.status
 
         if task_result.status == "SUCCESS":
             total_progress += 100 / num_tasks
-        elif task_result.status == "PROGRESS":
+        elif task_result.status == "PROGRESS" or task_result.status == "PENDING":
             step_progress = (
                 task_result.info.get("progress", 0)
                 if isinstance(task_result.info, dict)
