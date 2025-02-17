@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from track import BoundingBox, YoloDetector, Tracker
 from upscale import load_realbasicvsr, load_video_to_tensor, convert_tensor_to_video
-from ocr import perform_ocr_on_video
+from ocr import perform_ocr_on_video, LicensePlateOCR
 
 load_dotenv()
 
@@ -35,13 +35,16 @@ tracker = Tracker(iou_threshold=0.2)
 # Load RealBasicVSR model
 realBasicVSR = load_realbasicvsr()
 
+# Load OCR model
+ocr_model = LicensePlateOCR()
+
 TEMP_DIR = os.getenv("TEMP_DIR")
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 @celery.task(bind=True)
-def track_and_crop(self, input_path: str, bbox: str):
-    """Step 1: Track and Crop video"""
+def run_pipeline(self, input_path: str, bbox: str):
+    """Process input video through the pipeline"""
     CELERY_STEP = "Tracking & Cropping"
 
     self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
@@ -127,7 +130,7 @@ def track_and_crop(self, input_path: str, bbox: str):
                     state=PROGRESS_STATE,
                     meta={
                         "step": CELERY_STEP,
-                        "progress": int((processed_frames / total_frames) * 100),
+                        "progress": int(((processed_frames / total_frames) * 100) / 3),
                     },
                 )
 
@@ -136,13 +139,6 @@ def track_and_crop(self, input_path: str, bbox: str):
         out.release()
         cropped_out.release()
 
-        self.update_state(
-            state=PROGRESS_STATE,
-            meta={
-                "step": CELERY_STEP,
-                "progress": 100,
-            },
-        )
     except Exception as e:
         self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
         raise
@@ -153,27 +149,21 @@ def track_and_crop(self, input_path: str, bbox: str):
             if os.path.exists(temp_file):
                 os.remove(temp_file)
 
-    return temp_cropped
-
-
-@celery.task(bind=True)
-def upscale_video(self, cropped_path: str):
-    """Step 2: Upscale video"""
+    # Upscale the cropped video
     CELERY_STEP = "Upscaling"
-
-    self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
+    self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 33})
+    output_path = temp_cropped.replace("_cropped.mp4", "_upscaled.mp4")
 
     try:
-        output_path = cropped_path.replace("_cropped.mp4", "_upscaled.mp4")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        video_tensor = load_video_to_tensor(cropped_path)
+        video_tensor = load_video_to_tensor(temp_cropped)
         video_tensor = video_tensor.to(device)
 
         self.update_state(
             state=PROGRESS_STATE,
             meta={
                 "step": CELERY_STEP,
-                "progress": 25,
+                "progress": 45,
             },
         )
 
@@ -185,33 +175,26 @@ def upscale_video(self, cropped_path: str):
             state=PROGRESS_STATE,
             meta={
                 "step": CELERY_STEP,
-                "progress": 50,
+                "progress": 60,
             },
         )
 
         convert_tensor_to_video(sr_video_tensor, output_path)
 
         self.update_state(
-            state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 100}
+            state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 66}
         )
-        return output_path
 
     except Exception as e:
         self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
         raise
 
-
-@celery.task(bind=True)
-def perform_ocr(self, upscaled_path: str):
-    """Step 3: Perform OCR on video"""
+    # Perform OCR on the upscaled video
     CELERY_STEP = "Performing OCR"
-
-    # Immediately update state to STARTED
     self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
+    output_path = output_path.replace("_upscaled.mp4", "_ocr.png")
 
     try:
-        output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.png")
-
         self.update_state(
             state=PROGRESS_STATE,
             meta={
@@ -220,7 +203,7 @@ def perform_ocr(self, upscaled_path: str):
             },
         )
 
-        perform_ocr_on_video(upscaled_path, output_path)
+        perform_ocr_on_video(ocr_model, upscaled_path, output_path)
 
         self.update_state(
             state=PROGRESS_STATE,
@@ -229,8 +212,8 @@ def perform_ocr(self, upscaled_path: str):
                 "progress": 100,
             },
         )
-        return output_path
-
     except Exception as e:
         self.update_state(state="FAILURE", meta={"step": CELERY_STEP, "error": str(e)})
         raise
+
+    return output_path
