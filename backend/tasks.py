@@ -30,7 +30,7 @@ celery.conf.update(
 # Initialize detector and tracker
 YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH")
 detector = YoloDetector(model_path=YOLO_MODEL_PATH, confidence=0.4)
-tracker = Tracker(iou_threshold=0.2)
+tracker = Tracker(iou_threshold=0.3)
 
 # Load RealBasicVSR model
 realBasicVSR = load_realbasicvsr()
