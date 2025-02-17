@@ -10,7 +10,7 @@ class LicensePlateOCR:
     def __init__(self, model_path="global-plates-mobile-vit-v2-model"):
         self.model = ONNXPlateRecognizer(model_path)
 
-    def extract_frames(self, video_path, frame_skip=3):
+    def extract_frames(self, video_path):
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
@@ -18,8 +18,7 @@ class LicensePlateOCR:
             ret, frame = cap.read()
             if not ret:
                 break
-            if frame_count % frame_skip == 0:
-                frames.append(frame)
+            frames.append(frame)
             frame_count += 1
         cap.release()
         return frames
@@ -90,14 +89,38 @@ class LicensePlateOCRVisualizer:
     def __init__(self, ocr_model):
         self.model = ocr_model
 
-    def visualize(self, video_path, frame_skip=3, output_path=None):
-        frames = self.model.extract_frames(video_path, frame_skip)
+    def get_frame_confidences(self, frames, ocr_results):
+        frame_confidences = []
+        for i, frame in enumerate(frames):
+            if i < len(ocr_results):
+                # Calculate confidence based on similarity to final plate
+                final_plate, _ = self.model.analyze_results(ocr_results)
+                if final_plate:
+                    confidence = SequenceMatcher(None, ocr_results[i], final_plate).ratio()
+                    frame_confidences.append((i, confidence))
+        
+        # Sort by confidence and get indices of top 6 frames
+        frame_confidences.sort(key=lambda x: x[1], reverse=True)
+        return frame_confidences
+
+    def visualize(self, video_path, output_path=None):
+        original_video_path = video_path.replace("_upscaled", "_cropped")
+        original_frames = self.model.extract_frames(original_video_path)
+        frames = self.model.extract_frames(video_path)
         ocr_results = self.model.perform_ocr(frames)
         final_plate, confidence = self.model.analyze_results(ocr_results)
 
         if not frames or not ocr_results:
             print("No data to visualize.")
             return
+
+        # Get frame confidences and select top 6
+        frame_confidences = self.get_frame_confidences(frames, ocr_results)
+        top_6_indices = [idx for idx, _ in frame_confidences[:6]]
+        
+        # Select the frames with highest confidence
+        best_frames = [frames[i] for i in top_6_indices]
+        best_original_frames = [original_frames[i] for i in top_6_indices]
 
         plt.style.use("dark_background")
         fig = plt.figure(figsize=(20, 10))
@@ -109,12 +132,11 @@ class LicensePlateOCRVisualizer:
         axes[0, 1] = fig.add_subplot(gs[0, 1])  # Processed Frames
         axes[0, 2] = fig.add_subplot(gs[0, 2])  # Confidence Timeline
         axes[1, 0] = fig.add_subplot(gs[1, 0])  # OCR Timeline
-        axes[1, 1] = fig.add_subplot(gs[1, 1])  # Confidence Ranking (spans 2 columns)
+        axes[1, 1] = fig.add_subplot(gs[1, 1])  # Confidence Ranking
         axes[1, 2] = fig.add_subplot(gs[1, 2])  # Character Frequency
 
-        self.plot_frames(axes[0, 0], frames[-7:], "Upscaled Frames", gray=False)
-        processed_frames = [self.model.preprocess_image(frame) for frame in frames[-7:]]
-        self.plot_frames(axes[0, 1], processed_frames, "Processed Frames")
+        self.plot_frames(axes[0, 0], best_original_frames, "Original Frames", gray=False)
+        self.plot_frames(axes[0, 1], best_frames, "Upscaled Frames", gray=False)
         self.plot_confidence_timeline(axes[0, 2], ocr_results)
         self.plot_ocr_timeline(axes[1, 0], ocr_results)
         self.plot_confidence_ranking(axes[1, 1], ocr_results)
@@ -289,7 +311,7 @@ def perform_ocr_on_video(ocr_model, video_file, output_path):
 
 
 def main():
-    video_file = "temp/upscaled/output_video_2.mp4"
+    video_file = "temp/f6f257f7-a882-422b-ad09-cbcad3f72cde/f6f257f7-a882-422b-ad09-cbcad3f72cde_upscaled.mp4"
     ocr = LicensePlateOCR()
     visualizer = LicensePlateOCRVisualizer(ocr)
     visualizer.visualize(video_file, output_path="temp/ocr_viz.png")
