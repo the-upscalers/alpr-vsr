@@ -43,7 +43,7 @@ cd backend
 #### 2. Create virtual environment
 
 ```sh
- python -m venv .venv
+python -m venv .venv
 ```
 
 #### 3. Activate virtual environment
