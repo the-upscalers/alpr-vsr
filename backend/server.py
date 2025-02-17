@@ -5,10 +5,9 @@ import logging
 
 from track import BoundingBox
 from dotenv import load_dotenv
-from tasks import track_and_crop, upscale_video, perform_ocr, celery
+from tasks import run_pipeline, celery
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
-from celery import chain
 from celery.result import AsyncResult
 
 # Configure logging
@@ -56,9 +55,7 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
 
     # Create and execute the chain
     try:
-        result = chain(
-            track_and_crop.s(input_path, bbox), upscale_video.s(), perform_ocr.s()
-        ).apply_async()
+        result = run_pipeline.delay(input_path, bbox)
         logger.debug(f"Created chain with ID: {result.id}")
 
         # Try to get initial state
@@ -67,10 +64,8 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
 
         # Store the task information
         task_metadata[task_id] = {
+            "celery_task_id": result.id,
             "input_path": input_path,
-            "task_ids": [result.parent.parent.id, result.parent.id, result.id],
-            "task_sequence": ["track_and_crop", "upscale_video", "perform_ocr"],
-            "current_task_index": 0,
         }
         logger.debug(f"Stored task metadata: {task_metadata[task_id]}")
 
@@ -90,48 +85,26 @@ async def get_task_status(task_id: str):
         return {"error": "Invalid task ID"}
 
     metadata = task_metadata[task_id]
-    task_ids = [tid for tid in metadata.get("task_ids", []) if tid]
-    task_sequence = metadata.get("task_sequence", [])
+    celery_task_id = metadata.get("celery_task_id")
 
-    task_states = {}
-    total_progress = 0
-    num_tasks = len(task_ids)
+    task_result = AsyncResult(celery_task_id, app=celery)
+    logger.debug(f"Task result: {task_result}")
 
-    if num_tasks == 0:
-        return {"error": "No tasks found for this task ID"}
+    if task_result.status == "SUCCESS":
+        return {"task_id": task_id, "status": "SUCCESS", "progress": 100}
+    elif task_result.status == "FAILURE":
+        return {
+            "task_id": task_id,
+            "status": "FAILURE",
+            "error": str(task_result.result),
+        }
+    elif task_result.status == "PENDING" or task_result.status == "STARTED":
+        return {"task_id": task_id, "status": "PENDING", "progress": 0}
+    elif task_result.status == "PROGRESS":
+        progress = task_result.info.get("progress", 0)
+        return {"task_id": task_id, "status": "PROGRESS", "progress": progress}
 
-    for idx, id in enumerate(task_ids):
-        task_result = AsyncResult(id, app=celery)
-        task_states[task_sequence[idx]] = task_result.status
-
-        if task_result.status == "SUCCESS":
-            total_progress += 100 / num_tasks
-        elif task_result.status == "PROGRESS" or task_result.status == "PENDING":
-            step_progress = (
-                task_result.info.get("progress", 0)
-                if isinstance(task_result.info, dict)
-                else 0
-            )
-            total_progress += step_progress / num_tasks
-        elif task_result.status == "FAILURE":
-            return {
-                "task_id": task_id,
-                "status": "FAILURE",
-                "error": str(task_result.result),
-                "task_states": task_states,
-            }
-
-    progress = int(total_progress)
-    logger.debug(f"Task progress: {progress}%")
-
-    response = {
-        "task_id": task_id,
-        "progress": progress,
-        "task_states": task_states,
-        "status": "PROGRESS" if progress < 100 else "SUCCESS",
-    }
-    logger.debug(f"Returning task status response: {response}")
-    return response
+    return {"task_id": task_id, "status": task_result.status}
 
 
 @app.get("/download/{task_id}")
