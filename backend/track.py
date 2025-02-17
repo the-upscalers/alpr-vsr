@@ -14,56 +14,6 @@ class BoundingBox(BaseModel):
     y2: int
 
 
-class BoundingBoxDrawer:
-    def __init__(self):
-        self.drawing = False
-        self.start_x = -1
-        self.start_y = -1
-        self.end_x = -1
-        self.end_y = -1
-        self.box_drawn = False
-
-    def mouse_callback(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN:
-            self.drawing = True
-            self.start_x = x
-            self.start_y = y
-            self.end_x = x
-            self.end_y = y
-            self.box_drawn = False
-
-        elif event == cv2.EVENT_MOUSEMOVE:
-            if self.drawing:
-                self.end_x = x
-                self.end_y = y
-
-        elif event == cv2.EVENT_LBUTTONUP:
-            self.drawing = False
-            self.end_x = x
-            self.end_y = y
-            self.box_drawn = True
-
-    def get_box(self):
-        if not self.box_drawn:
-            return None
-        return [
-            min(self.start_x, self.end_x),
-            min(self.start_y, self.end_y),
-            max(self.start_x, self.end_x),
-            max(self.start_y, self.end_y),
-        ]
-
-    def draw_current_box(self, frame):
-        if self.start_x != -1 and self.start_y != -1:
-            cv2.rectangle(
-                frame,
-                (self.start_x, self.start_y),
-                (self.end_x, self.end_y),
-                (255, 0, 0),
-                2,
-            )
-
-
 class Tracker:
     def __init__(self, iou_threshold=0.2):
         self.object_tracker = DeepSort(
