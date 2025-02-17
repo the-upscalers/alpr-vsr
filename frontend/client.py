@@ -171,6 +171,12 @@ class VideoPlayerWindow(QMainWindow):
         video_layout.addWidget(self.video_label)
         layout.addWidget(video_container)
 
+        # After creating video_layout
+        self.bbox_coordinates_label = QLabel()
+        self.bbox_coordinates_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.bbox_coordinates_label.setStyleSheet("QLabel { padding: 5px; }")
+        video_layout.addWidget(self.bbox_coordinates_label)
+
         # Create progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet(
@@ -273,7 +279,7 @@ class VideoPlayerWindow(QMainWindow):
 
     def upload_video(self):
         file_name, _ = QFileDialog.getOpenFileName(
-            self, "Select Video", "", "Video Files (*.mp4 *.avi *.mov)"
+            self, "Select Video", "", "Video Files (*.mp4)"
         )
 
         if file_name:
@@ -287,6 +293,7 @@ class VideoPlayerWindow(QMainWindow):
                 self.play_button.setEnabled(True)
                 self.bbox = None
                 self.confirm_button.setEnabled(False)
+                self.bbox_coordinates_label.setText("")
                 self.read_frame()
                 self.statusBar().showMessage("Draw a box around the license plate")
             else:
@@ -390,6 +397,7 @@ class VideoPlayerWindow(QMainWindow):
                 max(self.start_point[0], current_point[0]),
                 max(self.start_point[1], current_point[1]),
             ]
+            self.bbox_coordinates_label.setText(f"Box coordinates: ({self.bbox[0]}, {self.bbox[1]}) to ({self.bbox[2]}, {self.bbox[3]})")
             self.display_frame()
 
     def mouseReleaseEvent(self, event):
@@ -400,6 +408,7 @@ class VideoPlayerWindow(QMainWindow):
                 self.statusBar().showMessage(
                     "Box drawn - Click 'Process Video' to begin tracking"
                 )
+                self.bbox_coordinates_label.setText(f"Box coordinates: ({self.bbox[0]}, {self.bbox[1]}) to ({self.bbox[2]}, {self.bbox[3]})")
 
     def convert_coordinates(self, pos):
         """Convert Qt coordinates to video coordinates"""
