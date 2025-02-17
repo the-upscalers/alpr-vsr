@@ -112,8 +112,8 @@ class LicensePlateOCRVisualizer:
         axes[1, 1] = fig.add_subplot(gs[1, 1])  # Confidence Ranking (spans 2 columns)
         axes[1, 2] = fig.add_subplot(gs[1, 2])  # Character Frequency
 
-        self.plot_frames(axes[0, 0], frames[:6], "Upscaled Frames", gray=False)
-        processed_frames = [self.model.preprocess_image(frame) for frame in frames[:6]]
+        self.plot_frames(axes[0, 0], frames[-7:], "Upscaled Frames", gray=False)
+        processed_frames = [self.model.preprocess_image(frame) for frame in frames[-7:]]
         self.plot_frames(axes[0, 1], processed_frames, "Processed Frames")
         self.plot_confidence_timeline(axes[0, 2], ocr_results)
         self.plot_ocr_timeline(axes[1, 0], ocr_results)

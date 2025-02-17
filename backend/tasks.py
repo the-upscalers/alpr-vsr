@@ -30,7 +30,7 @@ celery.conf.update(
 # Initialize detector and tracker
 YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH")
 detector = YoloDetector(model_path=YOLO_MODEL_PATH, confidence=0.4)
-tracker = Tracker(iou_threshold=0.3)
+tracker = Tracker()
 
 # Load RealBasicVSR model
 realBasicVSR = load_realbasicvsr()
@@ -101,7 +101,7 @@ def run_pipeline(self, input_path: str, bbox: str):
 
             if not target_initialized:
                 target_initialized = tracker.initialize_target(
-                    target_box, detections, frame
+                    target_box, frame
                 )
                 if not target_initialized:
                     continue
