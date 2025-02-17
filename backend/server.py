@@ -91,6 +91,7 @@ async def get_task_status(task_id: str):
     logger.debug(f"Task result: {task_result}")
 
     if task_result.status == "SUCCESS":
+        task_metadata[task_id]["output_path"] = task_result.result
         return {"task_id": task_id, "status": "SUCCESS", "progress": 100}
     elif task_result.status == "FAILURE":
         return {
