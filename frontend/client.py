@@ -168,6 +168,7 @@ class VideoPlayerWindow(QMainWindow):
         )
         self.video_label.setMinimumSize(640, 480)
         self.video_label.setStyleSheet("QLabel { background-color: #f0f0f0; }")
+        self.video_label.setCursor(Qt.CursorShape.PointingHandCursor)
         video_layout.addWidget(self.video_label)
         layout.addWidget(video_container)
 
