@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QMessageBox,
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal, QEvent
 from PyQt6.QtGui import QImage, QPixmap
 import sys
 import cv2
@@ -91,6 +91,7 @@ class VideoUploadThread(QThread):
 class VideoDownloadThread(QThread):
     status_update = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
+    image_downloaded = pyqtSignal(str)
 
     def __init__(self, task_id, server_url):
         super().__init__()
@@ -101,15 +102,47 @@ class VideoDownloadThread(QThread):
         try:
             response = requests.get(f"{self.server_url}/download/{self.task_id}")
             if response.status_code == 200:
-                output_path = Path.home() / "Downloads" / f"{self.task_id}.mp4"
+                output_path = Path.home() / "Downloads" / f"{self.task_id}.png"
                 with open(output_path, "wb") as f:
                     f.write(response.content)
                 self.status_update.emit("Output saved to: " + str(output_path))
+                self.status_update.emit("Opening output...")
+                self.image_downloaded.emit(str(output_path))
             else:
                 raise Exception(f"Server error: {response.text}")
 
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")
+
+
+class ImageDisplayWindow(QWidget):
+    def __init__(self, image_path):
+        super().__init__()
+        self.setWindowTitle("Output Image")
+        self.showFullScreen()  # Make the window take up the entire screen
+
+        layout = QVBoxLayout(self)
+        self.image_label = QLabel(self)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.image_label)
+
+        # Load and scale the image to fit the screen
+        pixmap = QPixmap(image_path)
+        screen_size = QApplication.primaryScreen().availableGeometry().size()
+        self.image_label.setPixmap(
+            pixmap.scaled(screen_size, Qt.AspectRatioMode.KeepAspectRatio)
+        )
+
+        self.setLayout(layout)
+
+        # Allow exiting full-screen mode by pressing ESC
+        self.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            self.close()  # Close window on ESC press
+            return True
+        return super().eventFilter(obj, event)
 
 
 class VideoPlayerWindow(QMainWindow):
@@ -120,6 +153,7 @@ class VideoPlayerWindow(QMainWindow):
         self.cap = None
         self.current_frame = None
         self.timer = QTimer()
+        self.image_window = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -398,7 +432,9 @@ class VideoPlayerWindow(QMainWindow):
                 max(self.start_point[0], current_point[0]),
                 max(self.start_point[1], current_point[1]),
             ]
-            self.bbox_coordinates_label.setText(f"Box coordinates: ({self.bbox[0]}, {self.bbox[1]}) to ({self.bbox[2]}, {self.bbox[3]})")
+            self.bbox_coordinates_label.setText(
+                f"Box coordinates: ({self.bbox[0]}, {self.bbox[1]}) to ({self.bbox[2]}, {self.bbox[3]})"
+            )
             self.display_frame()
 
     def mouseReleaseEvent(self, event):
@@ -409,7 +445,9 @@ class VideoPlayerWindow(QMainWindow):
                 self.statusBar().showMessage(
                     "Box drawn - Click 'Process Video' to begin tracking"
                 )
-                self.bbox_coordinates_label.setText(f"Box coordinates: ({self.bbox[0]}, {self.bbox[1]}) to ({self.bbox[2]}, {self.bbox[3]})")
+                self.bbox_coordinates_label.setText(
+                    f"Box coordinates: ({self.bbox[0]}, {self.bbox[1]}) to ({self.bbox[2]}, {self.bbox[3]})"
+                )
 
     def convert_coordinates(self, pos):
         """Convert Qt coordinates to video coordinates"""
@@ -468,9 +506,16 @@ class VideoPlayerWindow(QMainWindow):
             self.download_thread = VideoDownloadThread(
                 self.upload_thread.task_id, self.server_url
             )
+            self.download_thread.image_downloaded.connect(self.show_image)
             self.download_thread.status_update.connect(self.update_status)
             self.download_thread.error_occurred.connect(self.handle_error)
             self.download_thread.start()
+
+    def show_image(self, image_path):
+        """Display the downloaded image in a new window."""
+        if self.image_window is None or not self.image_window.isVisible():
+            self.image_window = ImageDisplayWindow(image_path)
+        self.image_window.show()
 
     def update_status(self, message):
         self.statusBar().showMessage(message)
@@ -508,7 +553,9 @@ class VideoPlayerWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     window = VideoPlayerWindow()
+    # img_window = ImageDisplayWindow("output.png")
     window.show()
+
     sys.exit(app.exec())
 
 
