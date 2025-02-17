@@ -98,6 +98,8 @@ def run_pipeline(self, input_path: str, bbox: str):
                 break
 
             detections = detector.detect(frame)
+            if len(detections) == 0 or not detections:
+                continue
 
             if not target_initialized:
                 target_initialized = tracker.initialize_target(
