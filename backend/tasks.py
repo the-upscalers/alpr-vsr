@@ -152,7 +152,7 @@ def run_pipeline(self, input_path: str, bbox: str):
     # Upscale the cropped video
     CELERY_STEP = "Upscaling"
     self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 33})
-    output_path = temp_cropped.replace("_cropped.mp4", "_upscaled.mp4")
+    upscaled_path = temp_cropped.replace("_cropped.mp4", "_upscaled.mp4")
 
     try:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -179,7 +179,7 @@ def run_pipeline(self, input_path: str, bbox: str):
             },
         )
 
-        convert_tensor_to_video(sr_video_tensor, output_path)
+        convert_tensor_to_video(sr_video_tensor, upscaled_path)
 
         self.update_state(
             state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 66}
@@ -192,7 +192,7 @@ def run_pipeline(self, input_path: str, bbox: str):
     # Perform OCR on the upscaled video
     CELERY_STEP = "Performing OCR"
     self.update_state(state=PROGRESS_STATE, meta={"step": CELERY_STEP, "progress": 0})
-    output_path = output_path.replace("_upscaled.mp4", "_ocr.png")
+    output_path = upscaled_path.replace("_upscaled.mp4", "_ocr.png")
 
     try:
         self.update_state(
