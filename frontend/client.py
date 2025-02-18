@@ -118,8 +118,7 @@ class VideoDownloadThread(QThread):
 class ImageDisplayWindow(QWidget):
     def __init__(self, image_path):
         super().__init__()
-        self.setWindowTitle("Output Image")
-        self.showFullScreen()  # Make the window take up the entire screen
+        self.setWindowTitle("Output Visualization")
 
         layout = QVBoxLayout(self)
         self.image_label = QLabel(self)
@@ -130,19 +129,15 @@ class ImageDisplayWindow(QWidget):
         pixmap = QPixmap(image_path)
         screen_size = QApplication.primaryScreen().availableGeometry().size()
         self.image_label.setPixmap(
-            pixmap.scaled(screen_size, Qt.AspectRatioMode.KeepAspectRatio)
+            pixmap.scaled(
+                screen_size.width() - 50,
+                screen_size.height(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
         )
 
         self.setLayout(layout)
-
-        # Allow exiting full-screen mode by pressing ESC
-        self.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
-            self.close()  # Close window on ESC press
-            return True
-        return super().eventFilter(obj, event)
 
 
 class VideoPlayerWindow(QMainWindow):
@@ -553,7 +548,6 @@ class VideoPlayerWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     window = VideoPlayerWindow()
-    # img_window = ImageDisplayWindow("output.png")
     window.show()
 
     sys.exit(app.exec())
