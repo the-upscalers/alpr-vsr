@@ -28,7 +28,9 @@ task_metadata = {}  # Store task metadata
 
 
 @app.post("/process-video")
-async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
+async def process_video(
+    video: UploadFile = File(...), bbox: str = Form(...), frame_number: int = Form(...)
+):
     """Process uploaded video"""
     logger.debug("Starting process_video endpoint")
 
@@ -55,7 +57,7 @@ async def process_video(video: UploadFile = File(...), bbox: str = Form(...)):
 
     # Create and execute the chain
     try:
-        result = run_pipeline.delay(input_path, bbox)
+        result = run_pipeline.delay(input_path, bbox, frame_number)
         logger.debug(f"Created chain with ID: {result.id}")
 
         # Try to get initial state

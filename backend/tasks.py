@@ -43,7 +43,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 @celery.task(bind=True)
-def run_pipeline(self, input_path: str, bbox: str):
+def run_pipeline(self, input_path: str, bbox: str, frame_number: int):
     """Process input video through the pipeline"""
     CELERY_STEP = "Tracking & Cropping"
 
@@ -86,29 +86,43 @@ def run_pipeline(self, input_path: str, bbox: str):
             (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1),
         )
 
-        target_initialized = False
+        # Skip to the specified frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+
+        # Read and process the initial frame to ensure we're at the right position
+        ret, frame = cap.read()
+        if not ret:
+            raise ValueError(f"Could not read frame {frame_number}")
+
+        # Initialize tracking with the first frame
         target_box = [bbox.x1, bbox.y1, bbox.x2, bbox.y2]
+        target_initialized = tracker.initialize_target(target_box, frame)
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        processed_frames = 0
+        if not target_initialized:
+            raise ValueError("Could not initialize tracking at the specified frame")
 
+        # Write the initial frame
+        cv2.rectangle(frame, (bbox.x1, bbox.y1), (bbox.x2, bbox.y2), (0, 255, 0), 2)
+        out.write(frame)
+        cropped_plate = frame[bbox.y1 : bbox.y2, bbox.x1 : bbox.x2]
+        if cropped_plate.size > 0:
+            resized_plate = cv2.resize(
+                cropped_plate, (bbox.x2 - bbox.x1, bbox.y2 - bbox.y1)
+            )
+            cropped_out.write(resized_plate)
+
+        # Get total remaining frames
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - frame_number
+        processed_frames = 1  # Count the initial frame
+
+        # Process remaining frames
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
             detections = detector.detect(frame)
-            if len(detections) == 0 or not detections:
-                continue
-
-            if not target_initialized:
-                target_initialized = tracker.initialize_target(
-                    target_box, frame
-                )
-                if not target_initialized:
-                    continue
-
-            if target_initialized:
+            if detections:
                 tracking_id, box = tracker.track(detections, frame)
                 if box is not None:
                     x1, y1, x2, y2 = map(int, box)
