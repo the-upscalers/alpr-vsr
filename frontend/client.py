@@ -34,10 +34,11 @@ class VideoUploadThread(QThread):
     error_occurred = pyqtSignal(str)
     start_timer = pyqtSignal(int)
 
-    def __init__(self, video_path, bbox, server_url, timer):
+    def __init__(self, video_path, bbox, frame_number, server_url, timer):
         super().__init__()
         self.video_path = video_path
         self.bbox = bbox
+        self.frame_number = frame_number
         self.server_url = server_url
         self.task_id = None
         self.timer = timer
@@ -68,7 +69,10 @@ class VideoUploadThread(QThread):
             # Prepare the files and data for upload
             with open(self.video_path, "rb") as video_file:
                 files = {"video": video_file}
-                data = {"bbox": json.dumps(self.bbox)}
+                data = {
+                    "bbox": json.dumps(self.bbox),
+                    "frame_number": self.frame_number,
+                }
 
                 # Make the request
                 response = requests.post(
@@ -149,6 +153,8 @@ class VideoPlayerWindow(QMainWindow):
         self.current_frame = None
         self.timer = QTimer()
         self.image_window = None
+        self.frame_number = 0
+        self.fps = 0
         self.setup_ui()
 
     def setup_ui(self):
@@ -201,11 +207,26 @@ class VideoPlayerWindow(QMainWindow):
         video_layout.addWidget(self.video_label)
         layout.addWidget(video_container)
 
-        # After creating video_layout
+        # Add bounding box coordinates display
         self.bbox_coordinates_label = QLabel()
         self.bbox_coordinates_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.bbox_coordinates_label.setStyleSheet("QLabel { padding: 5px; }")
         video_layout.addWidget(self.bbox_coordinates_label)
+
+        # Add timestamp display
+        self.timestamp_label = QLabel()
+        self.timestamp_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.timestamp_label.setStyleSheet(
+            """
+            QLabel {
+                padding: 5px;
+                background-color: rgba(0, 0, 0, 0.2);
+                color: white;
+                border-radius: 3px;
+            }
+        """
+        )
+        layout.addWidget(self.timestamp_label)
 
         # Create progress bar
         self.progress_bar = QProgressBar()
@@ -320,6 +341,8 @@ class VideoPlayerWindow(QMainWindow):
             self.cap = cv2.VideoCapture(self.video_path)
 
             if self.cap.isOpened():
+                self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+                self.frame_number = 0
                 self.play_button.setEnabled(True)
                 self.bbox = None
                 self.confirm_button.setEnabled(False)
@@ -335,14 +358,29 @@ class VideoPlayerWindow(QMainWindow):
 
         ret, self.current_frame = self.cap.read()
         if ret:
+            self.frame_number = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
+            self.update_timestamp_display()
             self.display_frame()
         else:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self.frame_number = 0
             ret, self.current_frame = self.cap.read()
             if not ret:
                 self.play_button.setChecked(False)
                 self.is_playing = False
                 self.timer.stop()
+
+    def update_timestamp_display(self):
+        seconds = self.frame_number / self.fps
+        minutes = int(seconds // 60)
+        seconds = seconds % 60
+        frame_count = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+
+        self.timestamp_label.setText(
+            f"Time: {minutes:02d}:{seconds:05.2f} | "
+            f"Frame: {self.frame_number}/{int(frame_count)} | "
+            f"FPS: {self.fps:.2f}"
+        )
 
     def display_frame(self):
         if self.current_frame is None:
@@ -398,12 +436,17 @@ class VideoPlayerWindow(QMainWindow):
             self.read_frame()
 
     def previous_frame(self):
-        current_pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, current_pos - 2))
-        self.read_frame()
+        if self.cap is not None:
+            self.frame_number = max(0, self.frame_number - 1)
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.frame_number)
+            self.read_frame()
 
     def next_frame(self):
-        self.read_frame()
+        if self.cap is not None:
+            total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.frame_number = min(self.frame_number + 1, total_frames - 1)
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.frame_number)
+            self.read_frame()
 
     def mousePressEvent(self, event):
         if (
@@ -476,7 +519,6 @@ class VideoPlayerWindow(QMainWindow):
             self.play_button.setEnabled(False)
             self.upload_button.setEnabled(False)
 
-            # Create and start upload thread
             self.upload_thread = VideoUploadThread(
                 self.video_path,
                 {
@@ -485,6 +527,7 @@ class VideoPlayerWindow(QMainWindow):
                     "x2": self.bbox[2],
                     "y2": self.bbox[3],
                 },
+                self.frame_number,
                 self.server_url,
                 self.timer,
             )
