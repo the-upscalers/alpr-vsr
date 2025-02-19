@@ -294,6 +294,9 @@ class VideoPlayerWindow(QMainWindow):
         self.download_button.setEnabled(False)
         self.download_button.setStyleSheet(button_style)
 
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.setStyleSheet(button_style)
+
         # Add buttons to controls layout
         controls_layout.addStretch()
         controls_layout.addWidget(self.prev_frame_button)
@@ -304,6 +307,8 @@ class VideoPlayerWindow(QMainWindow):
         controls_layout.addSpacing(20)
         controls_layout.addWidget(self.download_button)
         controls_layout.addStretch()
+        controls_layout.addSpacing(20)
+        controls_layout.addWidget(self.reset_button)
 
         # Add controls to main layout
         layout.addWidget(controls_widget)
@@ -317,6 +322,7 @@ class VideoPlayerWindow(QMainWindow):
         self.next_frame_button.clicked.connect(self.next_frame)
         self.confirm_button.clicked.connect(self.process_video)
         self.download_button.clicked.connect(self.download_output)
+        self.reset_button.clicked.connect(self.reset_app)
 
         # Setup video playback
         self.timer = QTimer()
@@ -586,6 +592,41 @@ class VideoPlayerWindow(QMainWindow):
         if self.cap is not None:
             self.cap.release()
         super().closeEvent(event)
+
+    def reset_app(self):
+        # Release current video capture
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+        
+        # Reset video-related variables
+        self.video_path = None
+        self.current_frame = None
+        self.frame_number = 0
+        self.fps = 0
+        self.bbox = None
+        
+        # Reset UI elements
+        self.video_label.clear()
+        self.video_label.setStyleSheet("QLabel { background-color: #f0f0f0; }")
+        self.bbox_coordinates_label.setText("")
+        self.timestamp_label.setText("")
+        self.progress_bar.setVisible(False)
+        
+        # Reset buttons
+        self.play_button.setChecked(False)
+        self.play_button.setEnabled(False)
+        self.play_button.setText("Play")
+        self.confirm_button.setEnabled(False)
+        self.download_button.setEnabled(False)
+        self.upload_button.setEnabled(True)
+        
+        # Reset playback state
+        self.is_playing = False
+        self.timer.stop()
+        
+        # Reset status
+        self.statusBar().showMessage("Upload a video to begin")
 
 
 def main():
