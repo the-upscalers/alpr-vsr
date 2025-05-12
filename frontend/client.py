@@ -429,6 +429,9 @@ class VideoPlayerWindow(QMainWindow):
     def toggle_play(self):
         self.is_playing = self.play_button.isChecked()
         if self.is_playing:
+            # Reconnect the timer if it's not connected
+            if not self.timer.isActive():
+                self.timer.timeout.connect(self.update_frame)
             self.timer.start(int(1000 / 30))  # 30 fps
             self.play_button.setText("Pause")
             self.statusBar().showMessage("Playing video")
