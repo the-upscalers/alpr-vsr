@@ -481,7 +481,6 @@ def process_video(video_path, model_path, output_folder, confidence=0.3, save_fr
 
 def main():
     parser = argparse.ArgumentParser(description="Detect and track text in videos")
-    parser.add_argument("--video", required=True, help="Path to input video file or folder of videos")
     parser.add_argument("--model", required=True, help="Path to YOLO model")
     parser.add_argument("--output", default="text_output", help="Output folder for videos and optionally crops")
     parser.add_argument("--conf", type=float, default=0.3, help="Detection confidence threshold")
@@ -493,38 +492,48 @@ def main():
     parser.set_defaults(save_crops=False, visualize=True)
     
     args = parser.parse_args()
-    
-    # Check if input is a directory or a single file
-    if os.path.isdir(args.video):
-        total_regions = 0
-        for video_file in os.listdir(args.video):
-            if video_file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                video_path = os.path.join(args.video, video_file)
-                regions = process_video(
-                    video_path, 
-                    args.model, 
-                    args.output, 
-                    args.conf, 
-                    args.save_freq,
-                    args.classes,
-                    save_crops=args.save_crops,
-                    visualize=args.visualize,
-                    max_frames_per_track=args.max_frames_per_track
-                )
-                total_regions += regions if regions else 0
-        print(f"Total unique text regions found across all videos: {total_regions}")
-    else:
-        process_video(
-            args.video, 
-            args.model, 
-            args.output, 
-            args.conf, 
-            args.save_freq,
-            args.classes,
-            save_crops=args.save_crops,
-            visualize=args.visualize,
-            max_frames_per_track=args.max_frames_per_track
-        )
+
+    videos = [
+        "downloads/cctv_9.mp4",
+        "downloads/cctv_10.mp4",
+        "downloads/cctv_11.mp4",
+        "downloads/cctv_12.mp4",
+        "downloads/cctv_13.mp4",
+        "downloads/cctv_14.mp4",
+    ]
+
+    for video in videos:
+        # Check if input is a directory or a single file
+        if os.path.isdir(video):
+            total_regions = 0
+            for video_file in os.listdir(video):
+                if video_file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                    video_path = os.path.join(video, video_file)
+                    regions = process_video(
+                        video_path, 
+                        args.model, 
+                        args.output, 
+                        args.conf, 
+                        args.save_freq,
+                        args.classes,
+                        save_crops=args.save_crops,
+                        visualize=args.visualize,
+                        max_frames_per_track=args.max_frames_per_track
+                    )
+                    total_regions += regions if regions else 0
+            print(f"Total unique text regions found across all videos: {total_regions}")
+        else:
+            process_video(
+                video, 
+                args.model, 
+                args.output, 
+                args.conf, 
+                args.save_freq,
+                args.classes,
+                save_crops=args.save_crops,
+                visualize=args.visualize,
+                max_frames_per_track=args.max_frames_per_track
+            )
 
 if __name__ == "__main__":
     main()
