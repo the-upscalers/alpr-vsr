@@ -97,7 +97,7 @@ class LicensePlateOCRVisualizer:
                 final_plate, _ = self.model.analyze_results(ocr_results)
                 if final_plate:
                     confidence = SequenceMatcher(None, ocr_results[i], final_plate).ratio()
-                    frame_confidences.append((i, confidence))
+                    frame_confidences.append((i, confidence, frame))
         
         # Sort by confidence and get indices of top 6 frames
         frame_confidences.sort(key=lambda x: x[1], reverse=True)
@@ -116,11 +116,11 @@ class LicensePlateOCRVisualizer:
 
         # Get frame confidences and select top 6
         frame_confidences = self.get_frame_confidences(frames, ocr_results)
-        top_6_indices = [idx for idx, _ in frame_confidences[:6]]
+        top_6_frames = [(idx, conf, frame) for idx, conf, frame in frame_confidences[:6]]
         
         # Select the frames with highest confidence
-        best_frames = [frames[i] for i in top_6_indices]
-        best_original_frames = [original_frames[i] for i in top_6_indices]
+        best_frames = [frame for _, _, frame in top_6_frames]
+        best_original_frames = [original_frames[idx] for idx, _, _ in top_6_frames]
 
         plt.style.use("dark_background")
         fig = plt.figure(figsize=(20, 10))
@@ -128,15 +128,29 @@ class LicensePlateOCRVisualizer:
 
         # Create the axes with specific spans
         axes = {}
-        axes[0, 0] = fig.add_subplot(gs[0, 0])  # Upscaled Frames
-        axes[0, 1] = fig.add_subplot(gs[0, 1])  # Processed Frames
+        axes[0, 0] = fig.add_subplot(gs[0, 0])  # Best Frame
+        axes[0, 1] = fig.add_subplot(gs[0, 1])  # Original Frame
         axes[0, 2] = fig.add_subplot(gs[0, 2])  # Confidence Timeline
         axes[1, 0] = fig.add_subplot(gs[1, 0])  # OCR Timeline
         axes[1, 1] = fig.add_subplot(gs[1, 1])  # Confidence Ranking
         axes[1, 2] = fig.add_subplot(gs[1, 2])  # Character Frequency
 
-        self.plot_frames(axes[0, 0], best_original_frames, "Original Frames", gray=False)
-        self.plot_frames(axes[0, 1], best_frames, "Upscaled Frames", gray=False)
+        # Plot the best frame (highest confidence) first
+        if best_frames:
+            best_frame = best_frames[0]
+            best_frame_rgb = cv2.cvtColor(best_frame, cv2.COLOR_BGR2RGB)
+            axes[0, 0].imshow(best_frame_rgb)
+            axes[0, 0].set_title(f"Best Frame (Confidence: {frame_confidences[0][1]:.2f})")
+            axes[0, 0].axis("off")
+
+        # Plot the original frame
+        if best_original_frames:
+            original_frame = best_original_frames[0]
+            original_frame_rgb = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
+            axes[0, 1].imshow(original_frame_rgb)
+            axes[0, 1].set_title("Original Frame")
+            axes[0, 1].axis("off")
+
         self.plot_confidence_timeline(axes[0, 2], ocr_results)
         self.plot_ocr_timeline(axes[1, 0], ocr_results)
         self.plot_confidence_ranking(axes[1, 1], ocr_results)
